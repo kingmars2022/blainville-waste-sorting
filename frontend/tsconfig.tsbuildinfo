@@ -1,0 +1,1 @@
+{"root":["./src/main.ts","./src/router.ts","./src/usei18n.ts","./src/data/sortingguide.ts","./src/i18n/messages.ts","./src/stores/preferences.ts","./src/app.vue","./src/views/adminview.vue","./src/views/homeview.vue","./src/views/settingsview.vue","./src/views/sortingview.vue"],"version":"5.9.3"}

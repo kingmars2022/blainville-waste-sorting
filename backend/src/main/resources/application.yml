@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: bienvenue-a-blainville
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/bienvenue_blainville?useUnicode=true&characterEncoding=utf8&serverTimezone=America/Toronto}
+    username: ${DB_USERNAME:blainville_app}
+    password: ${DB_PASSWORD:}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+mybatis:
+  mapper-locations: classpath:mappers/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  jwt:
+    issuer: bienvenue-a-blainville
+    secret: ${APP_JWT_SECRET:change-this-development-secret-change-before-production}
+    expires-in-minutes: 1440
+  collection:
+    put-out-after: "20:00"
+    put-out-before: "06:00"
+    bring-back-before: "20:00"

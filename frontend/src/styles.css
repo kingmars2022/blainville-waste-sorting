@@ -1,0 +1,381 @@
+:root {
+  color: #17211d;
+  background: #f6f4ef;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-header {
+  align-items: center;
+  background: #2f5d50;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 12px;
+}
+
+.page {
+  margin: 0 auto;
+  max-width: 960px;
+  padding: 24px 16px;
+}
+
+.notice {
+  background: #ffffff;
+  border-left: 8px solid #8a5f35;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(30 41 35 / 8%);
+  padding: 24px;
+}
+
+.notice h1 {
+  font-size: 40px;
+  line-height: 1;
+  margin: 8px 0;
+}
+
+.eyebrow {
+  color: #4b675c;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.panel {
+  margin-top: 24px;
+}
+
+.bin-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.bin-card {
+  border-radius: 8px;
+  color: white;
+  display: grid;
+  min-height: 110px;
+  padding: 16px;
+}
+
+.bin-card span {
+  font-size: 14px;
+}
+
+.bin-card strong {
+  align-self: end;
+  font-size: 18px;
+}
+
+.brown {
+  background: #79512d;
+}
+
+.blue {
+  background: #2869a6;
+}
+
+.black {
+  background: #202421;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+select,
+input,
+textarea {
+  border: 1px solid #c7d0ca;
+  border-radius: 8px;
+  font: inherit;
+  padding: 12px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.checkbox {
+  align-items: center;
+  display: flex;
+}
+
+.search {
+  box-sizing: border-box;
+  max-width: 520px;
+  width: 100%;
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.segmented button {
+  background: white;
+  border: 1px solid #c7d0ca;
+  border-radius: 8px;
+  color: #17211d;
+  cursor: pointer;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.segmented button.active {
+  background: #2f5d50;
+  border-color: #2f5d50;
+  color: white;
+}
+
+.sorting-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin-top: 18px;
+}
+
+.special-reminders {
+  margin: 18px 0 24px;
+}
+
+.special-reminders h2 {
+  font-size: 20px;
+}
+
+.reminder-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.reminder-card {
+  background: #ffffff;
+  border-left: 6px solid #2f5d50;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(30 41 35 / 8%);
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.reminder-card span {
+  color: #4b675c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reminder-card strong {
+  font-size: 18px;
+}
+
+.reminder-card p,
+.availability p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sorting-card {
+  background: white;
+  border-radius: 8px;
+  border-top: 8px solid #77837c;
+  box-shadow: 0 8px 24px rgb(30 41 35 / 8%);
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.sorting-card h2 {
+  font-size: 22px;
+  line-height: 1.2;
+  margin: 8px 0;
+}
+
+.sorting-card p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sorting-card ul {
+  line-height: 1.5;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.sorting-card a {
+  color: #2f5d50;
+  font-weight: 700;
+}
+
+.sorting-card.brown {
+  border-top-color: #79512d;
+}
+
+.sorting-card.blue {
+  border-top-color: #2869a6;
+}
+
+.sorting-card.black {
+  border-top-color: #202421;
+}
+
+.tag {
+  color: #4b675c;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.empty {
+  background: white;
+  border-radius: 8px;
+  margin-top: 18px;
+  padding: 18px;
+}
+
+.admin-hero {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(30 41 35 / 8%);
+  padding: 24px;
+}
+
+.admin-hero span {
+  color: #4b675c;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.admin-hero h1 {
+  margin: 8px 0;
+}
+
+.admin-hero p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.admin-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin: 18px 0;
+}
+
+.admin-stat {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(30 41 35 / 8%);
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+}
+
+.admin-stat span,
+.admin-stat small {
+  color: #4b675c;
+}
+
+.admin-stat strong {
+  font-size: 30px;
+}
+
+.admin-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-panel {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(30 41 35 / 8%);
+  padding: 18px;
+}
+
+.admin-panel-title {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.admin-panel-title h2 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.admin-panel-title button {
+  background: #2f5d50;
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.admin-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.admin-table {
+  border-collapse: collapse;
+  margin-top: 18px;
+  width: 100%;
+}
+
+.admin-table th,
+.admin-table td {
+  border-bottom: 1px solid #d9e0dc;
+  padding: 10px;
+  text-align: left;
+}
+
+.admin-table th {
+  color: #4b675c;
+  font-size: 14px;
+}
+
+.admin-note {
+  background: #f6f4ef;
+  border-radius: 8px;
+  line-height: 1.5;
+  padding: 14px;
+}
+
+@media (max-width: 720px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .app-header nav {
+    flex-wrap: wrap;
+  }
+}
