@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "../useI18n";
 import { api } from "../api/client";
 
@@ -17,24 +17,53 @@ type Notice = {
   active: boolean;
 };
 
+type CollectionEvent = {
+  id: number;
+  collectionDate: string;
+  sector: string;
+  collectionType: string;
+  binColor: string;
+  noteFr: string | null;
+  noteEn: string | null;
+  noteZh: string | null;
+  sourceUrl: string | null;
+};
+
+type Translation = { name: string; instruction: string; location: string | null };
+
+type SortingItem = {
+  id: number;
+  destinationType: string;
+  binColor: string;
+  sourceUrl: string | null;
+  fr: Translation;
+  en: Translation;
+  zh: Translation;
+  keywordsFr: string[];
+  keywordsEn: string[];
+  keywordsZh: string[];
+};
+
 const { t, language } = useI18n();
 
-const summaryCards = [
-  { key: "schedule", value: "3", status: "pending" },
-  { key: "sorting", value: "10", status: "pending" },
-  { key: "translations", value: "3", status: "complete" }
-] as const;
-
-const recentRows = [
-  { date: "2026-08-27", sector: "all", type: "organic", bin: "brown" },
-  { date: "2026-09-01", sector: "south", type: "recycling", bin: "blue" },
-  { date: "2026-09-02", sector: "north", type: "recycling", bin: "blue" }
-];
-
 const notices = ref<Notice[]>([]);
-const loadError = ref("");
+const noticeError = ref("");
 
-const draft = reactive({
+const events = ref<CollectionEvent[]>([]);
+const eventError = ref("");
+
+const sortingItems = ref<SortingItem[]>([]);
+const sortingError = ref("");
+
+const summaryCards = computed(() => [
+  { key: "schedule" as const, value: events.value.length },
+  { key: "sorting" as const, value: sortingItems.value.length },
+  { key: "notices" as const, value: notices.value.length }
+]);
+
+// --- Notices -----------------------------------------------------------
+
+const noticeDraft = reactive({
   startsOn: "",
   endsOn: "",
   titleFr: "",
@@ -48,27 +77,27 @@ const draft = reactive({
 async function loadNotices() {
   try {
     notices.value = await api.get<Notice[]>("/admin/notices");
-    loadError.value = "";
+    noticeError.value = "";
   } catch (err) {
-    loadError.value = err instanceof Error ? err.message : "Failed to load notices";
+    noticeError.value = err instanceof Error ? err.message : "Failed to load notices";
   }
 }
 
 async function createNotice() {
   await api.post<Notice>("/admin/notices", {
-    startsOn: draft.startsOn,
-    endsOn: draft.endsOn,
-    titleFr: draft.titleFr,
-    titleEn: draft.titleEn,
-    titleZh: draft.titleZh,
-    bodyFr: draft.bodyFr,
-    bodyEn: draft.bodyEn,
-    bodyZh: draft.bodyZh,
+    startsOn: noticeDraft.startsOn,
+    endsOn: noticeDraft.endsOn,
+    titleFr: noticeDraft.titleFr,
+    titleEn: noticeDraft.titleEn,
+    titleZh: noticeDraft.titleZh,
+    bodyFr: noticeDraft.bodyFr,
+    bodyEn: noticeDraft.bodyEn,
+    bodyZh: noticeDraft.bodyZh,
     sourceUrl: null,
     active: true
   });
 
-  Object.assign(draft, {
+  Object.assign(noticeDraft, {
     startsOn: "",
     endsOn: "",
     titleFr: "",
@@ -91,7 +120,127 @@ function noticeTitle(notice: Notice) {
   return { fr: notice.titleFr, en: notice.titleEn, zh: notice.titleZh }[language.value];
 }
 
-onMounted(loadNotices);
+// --- Collection schedule -------------------------------------------------
+
+const eventDraft = reactive({
+  collectionDate: "",
+  sector: "all",
+  collectionType: "organic",
+  binColor: "brown"
+});
+
+async function loadEvents() {
+  try {
+    events.value = await api.get<CollectionEvent[]>("/admin/collections");
+    eventError.value = "";
+  } catch (err) {
+    eventError.value = err instanceof Error ? err.message : "Failed to load collections";
+  }
+}
+
+async function createEvent() {
+  await api.post<CollectionEvent>("/admin/collections", {
+    collectionDate: eventDraft.collectionDate,
+    sector: eventDraft.sector,
+    collectionType: eventDraft.collectionType,
+    binColor: eventDraft.binColor,
+    noteFr: null,
+    noteEn: null,
+    noteZh: null,
+    sourceUrl: null
+  });
+
+  eventDraft.collectionDate = "";
+  await loadEvents();
+}
+
+async function deleteEvent(id: number) {
+  await api.delete(`/admin/collections/${id}`);
+  await loadEvents();
+}
+
+// --- Sorting items ---------------------------------------------------------
+
+const sortingDraft = reactive({
+  destinationType: "organic",
+  binColor: "brown",
+  sourceUrl: "",
+  nameFr: "",
+  nameEn: "",
+  nameZh: "",
+  instructionFr: "",
+  instructionEn: "",
+  instructionZh: "",
+  locationFr: "",
+  locationEn: "",
+  locationZh: "",
+  keywordsFr: "",
+  keywordsEn: "",
+  keywordsZh: ""
+});
+
+async function loadSortingItems() {
+  try {
+    sortingItems.value = await api.get<SortingItem[]>("/admin/sorting-items");
+    sortingError.value = "";
+  } catch (err) {
+    sortingError.value = err instanceof Error ? err.message : "Failed to load sorting items";
+  }
+}
+
+function splitKeywords(value: string) {
+  return value
+    .split(",")
+    .map((keyword) => keyword.trim())
+    .filter((keyword) => keyword.length > 0);
+}
+
+async function createSortingItem() {
+  await api.post<SortingItem>("/admin/sorting-items", {
+    destinationType: sortingDraft.destinationType,
+    binColor: sortingDraft.binColor,
+    sourceUrl: sortingDraft.sourceUrl || null,
+    fr: { name: sortingDraft.nameFr, instruction: sortingDraft.instructionFr, location: sortingDraft.locationFr || null },
+    en: { name: sortingDraft.nameEn, instruction: sortingDraft.instructionEn, location: sortingDraft.locationEn || null },
+    zh: { name: sortingDraft.nameZh, instruction: sortingDraft.instructionZh, location: sortingDraft.locationZh || null },
+    keywordsFr: splitKeywords(sortingDraft.keywordsFr),
+    keywordsEn: splitKeywords(sortingDraft.keywordsEn),
+    keywordsZh: splitKeywords(sortingDraft.keywordsZh)
+  });
+
+  Object.assign(sortingDraft, {
+    sourceUrl: "",
+    nameFr: "",
+    nameEn: "",
+    nameZh: "",
+    instructionFr: "",
+    instructionEn: "",
+    instructionZh: "",
+    locationFr: "",
+    locationEn: "",
+    locationZh: "",
+    keywordsFr: "",
+    keywordsEn: "",
+    keywordsZh: ""
+  });
+
+  await loadSortingItems();
+}
+
+async function deleteSortingItem(id: number) {
+  await api.delete(`/admin/sorting-items/${id}`);
+  await loadSortingItems();
+}
+
+function sortingName(item: SortingItem) {
+  return { fr: item.fr, en: item.en, zh: item.zh }[language.value].name;
+}
+
+onMounted(() => {
+  loadNotices();
+  loadEvents();
+  loadSortingItems();
+});
 </script>
 
 <template>
@@ -108,11 +257,6 @@ onMounted(loadNotices);
       <article v-for="card in summaryCards" :key="card.key" class="admin-stat">
         <span>{{ t(`admin.${card.key}`) }}</span>
         <strong>{{ card.value }}</strong>
-        <small>{{ t(`admin.${card.status}`) }}</small>
-      </article>
-      <article class="admin-stat">
-        <span>{{ t("admin.notices") }}</span>
-        <strong>{{ notices.length }}</strong>
         <small>{{ t("admin.complete") }}</small>
       </article>
     </div>
@@ -121,17 +265,18 @@ onMounted(loadNotices);
       <section class="admin-panel">
         <div class="admin-panel-title">
           <h2>{{ t("admin.schedule") }}</h2>
-          <button type="button">{{ t("admin.addEvent") }}</button>
         </div>
 
-        <div class="admin-form-grid">
+        <p v-if="eventError" class="auth-error">{{ eventError }}</p>
+
+        <form class="admin-form-grid" @submit.prevent="createEvent">
           <label>
             {{ t("admin.date") }}
-            <input type="date" />
+            <input v-model="eventDraft.collectionDate" type="date" required />
           </label>
           <label>
             {{ t("admin.sector") }}
-            <select>
+            <select v-model="eventDraft.sector">
               <option value="north">north</option>
               <option value="south">south</option>
               <option value="all">all</option>
@@ -139,76 +284,168 @@ onMounted(loadNotices);
           </label>
           <label>
             {{ t("admin.type") }}
-            <select>
+            <select v-model="eventDraft.collectionType">
               <option value="organic">organic</option>
               <option value="recycling">recycling</option>
               <option value="garbage">garbage</option>
               <option value="bulky">bulky</option>
+              <option value="ecocentre">ecocentre</option>
               <option value="special">special</option>
             </select>
           </label>
           <label>
             {{ t("admin.bin") }}
-            <select>
+            <select v-model="eventDraft.binColor">
               <option value="brown">brown</option>
               <option value="blue">blue</option>
               <option value="black">black</option>
               <option value="none">none</option>
             </select>
           </label>
-        </div>
+          <button type="submit">{{ t("admin.addEvent") }}</button>
+        </form>
 
-        <table class="admin-table">
+        <table class="admin-table" v-if="events.length">
           <thead>
             <tr>
               <th>{{ t("admin.date") }}</th>
               <th>{{ t("admin.sector") }}</th>
               <th>{{ t("admin.type") }}</th>
               <th>{{ t("admin.bin") }}</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in recentRows" :key="`${row.date}-${row.sector}-${row.type}`">
-              <td>{{ row.date }}</td>
-              <td>{{ row.sector }}</td>
-              <td>{{ row.type }}</td>
-              <td>{{ row.bin }}</td>
+            <tr v-for="event in events" :key="event.id">
+              <td>{{ event.collectionDate }}</td>
+              <td>{{ event.sector }}</td>
+              <td>{{ event.collectionType }}</td>
+              <td>{{ event.binColor }}</td>
+              <td>
+                <button type="button" @click="deleteEvent(event.id)">{{ t("admin.delete") }}</button>
+              </td>
             </tr>
           </tbody>
         </table>
+        <p v-else class="admin-note">{{ t("admin.noScheduleEvents") }}</p>
       </section>
 
       <section class="admin-panel">
         <div class="admin-panel-title">
           <h2>{{ t("admin.sorting") }}</h2>
-          <button type="button">{{ t("admin.addItem") }}</button>
         </div>
 
-        <label>
-          {{ t("admin.nameFr") }}
-          <input type="text" placeholder="Boite a pizza" />
-        </label>
-        <label>
-          {{ t("admin.nameEn") }}
-          <input type="text" placeholder="Pizza box" />
-        </label>
-        <label>
-          {{ t("admin.nameZh") }}
-          <input type="text" placeholder="披萨盒" />
-        </label>
-        <label>
-          {{ t("admin.instructionFr") }}
-          <textarea rows="4" placeholder="Deposez cet article dans le bac brun."></textarea>
-        </label>
+        <p v-if="sortingError" class="auth-error">{{ sortingError }}</p>
+
+        <form class="admin-form-grid" @submit.prevent="createSortingItem">
+          <label>
+            {{ t("admin.type") }}
+            <select v-model="sortingDraft.destinationType">
+              <option value="organic">organic</option>
+              <option value="recycling">recycling</option>
+              <option value="garbage">garbage</option>
+              <option value="ecocentre">ecocentre</option>
+              <option value="bulky">bulky</option>
+              <option value="special">special</option>
+            </select>
+          </label>
+          <label>
+            {{ t("admin.bin") }}
+            <select v-model="sortingDraft.binColor">
+              <option value="brown">brown</option>
+              <option value="blue">blue</option>
+              <option value="black">black</option>
+              <option value="none">none</option>
+            </select>
+          </label>
+          <label>
+            {{ t("admin.sourceUrl") }}
+            <input v-model="sortingDraft.sourceUrl" type="url" />
+          </label>
+
+          <label>
+            {{ t("admin.nameFr") }}
+            <input v-model="sortingDraft.nameFr" type="text" required />
+          </label>
+          <label>
+            {{ t("admin.instruction") }} (FR)
+            <textarea v-model="sortingDraft.instructionFr" rows="2" required></textarea>
+          </label>
+          <label>
+            {{ t("admin.location") }} (FR)
+            <input v-model="sortingDraft.locationFr" type="text" />
+          </label>
+          <label>
+            {{ t("admin.keywords") }} (FR)
+            <input v-model="sortingDraft.keywordsFr" type="text" />
+          </label>
+
+          <label>
+            {{ t("admin.nameEn") }}
+            <input v-model="sortingDraft.nameEn" type="text" required />
+          </label>
+          <label>
+            {{ t("admin.instruction") }} (EN)
+            <textarea v-model="sortingDraft.instructionEn" rows="2" required></textarea>
+          </label>
+          <label>
+            {{ t("admin.location") }} (EN)
+            <input v-model="sortingDraft.locationEn" type="text" />
+          </label>
+          <label>
+            {{ t("admin.keywords") }} (EN)
+            <input v-model="sortingDraft.keywordsEn" type="text" />
+          </label>
+
+          <label>
+            {{ t("admin.nameZh") }}
+            <input v-model="sortingDraft.nameZh" type="text" required />
+          </label>
+          <label>
+            {{ t("admin.instruction") }} (ZH)
+            <textarea v-model="sortingDraft.instructionZh" rows="2" required></textarea>
+          </label>
+          <label>
+            {{ t("admin.location") }} (ZH)
+            <input v-model="sortingDraft.locationZh" type="text" />
+          </label>
+          <label>
+            {{ t("admin.keywords") }} (ZH)
+            <input v-model="sortingDraft.keywordsZh" type="text" />
+          </label>
+
+          <button type="submit">{{ t("admin.addItem") }}</button>
+        </form>
+
+        <table class="admin-table" v-if="sortingItems.length">
+          <thead>
+            <tr>
+              <th>{{ t("admin.type") }}</th>
+              <th>{{ t("admin.bin") }}</th>
+              <th>{{ t("admin.nameFr") }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in sortingItems" :key="item.id">
+              <td>{{ item.destinationType }}</td>
+              <td>{{ item.binColor }}</td>
+              <td>{{ sortingName(item) }}</td>
+              <td>
+                <button type="button" @click="deleteSortingItem(item.id)">{{ t("admin.delete") }}</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="admin-note">{{ t("admin.noSortingItems") }}</p>
       </section>
 
       <section class="admin-panel">
         <div class="admin-panel-title">
           <h2>{{ t("admin.translations") }}</h2>
-          <button type="button">{{ t("admin.reviewTranslations") }}</button>
         </div>
         <p class="admin-note">
-          fr, en, zh doivent toujours etre remplis avant publication.
+          {{ sortingItems.length }} {{ t("admin.translationsSummary") }}
         </p>
       </section>
 
@@ -217,40 +454,40 @@ onMounted(loadNotices);
           <h2>{{ t("admin.notices") }}</h2>
         </div>
 
-        <p v-if="loadError" class="auth-error">{{ loadError }}</p>
+        <p v-if="noticeError" class="auth-error">{{ noticeError }}</p>
 
         <form class="admin-form-grid" @submit.prevent="createNotice">
           <label>
             {{ t("admin.startsOn") }}
-            <input v-model="draft.startsOn" type="date" required />
+            <input v-model="noticeDraft.startsOn" type="date" required />
           </label>
           <label>
             {{ t("admin.endsOn") }}
-            <input v-model="draft.endsOn" type="date" required />
+            <input v-model="noticeDraft.endsOn" type="date" required />
           </label>
           <label>
             {{ t("admin.nameFr") }}
-            <input v-model="draft.titleFr" type="text" required />
+            <input v-model="noticeDraft.titleFr" type="text" required />
           </label>
           <label>
             {{ t("admin.nameEn") }}
-            <input v-model="draft.titleEn" type="text" required />
+            <input v-model="noticeDraft.titleEn" type="text" required />
           </label>
           <label>
             {{ t("admin.nameZh") }}
-            <input v-model="draft.titleZh" type="text" required />
+            <input v-model="noticeDraft.titleZh" type="text" required />
           </label>
           <label>
             {{ t("admin.noticeBody") }} (FR)
-            <textarea v-model="draft.bodyFr" rows="2" required></textarea>
+            <textarea v-model="noticeDraft.bodyFr" rows="2" required></textarea>
           </label>
           <label>
             {{ t("admin.noticeBody") }} (EN)
-            <textarea v-model="draft.bodyEn" rows="2" required></textarea>
+            <textarea v-model="noticeDraft.bodyEn" rows="2" required></textarea>
           </label>
           <label>
             {{ t("admin.noticeBody") }} (ZH)
-            <textarea v-model="draft.bodyZh" rows="2" required></textarea>
+            <textarea v-model="noticeDraft.bodyZh" rows="2" required></textarea>
           </label>
           <button type="submit">{{ t("admin.publishNotice") }}</button>
         </form>

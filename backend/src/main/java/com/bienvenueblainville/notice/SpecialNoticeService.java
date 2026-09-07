@@ -7,7 +7,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class SpecialNoticeService {
@@ -28,9 +30,21 @@ public class SpecialNoticeService {
     }
 
     public SpecialNotice create(NoticeRequest request) {
-        SpecialNotice notice = toNotice(null, request);
-        mapper.insert(notice);
-        return mapper.findById(notice.id()).orElseThrow();
+        Map<String, Object> params = new HashMap<>();
+        params.put("startsOn", request.startsOn());
+        params.put("endsOn", request.endsOn());
+        params.put("titleFr", request.titleFr());
+        params.put("titleEn", request.titleEn());
+        params.put("titleZh", request.titleZh());
+        params.put("bodyFr", request.bodyFr());
+        params.put("bodyEn", request.bodyEn());
+        params.put("bodyZh", request.bodyZh());
+        params.put("sourceUrl", request.sourceUrl());
+        params.put("active", request.active());
+
+        mapper.insert(params);
+        Long generatedId = (Long) params.get("id");
+        return mapper.findById(generatedId).orElseThrow();
     }
 
     public SpecialNotice update(Long id, NoticeRequest request) {

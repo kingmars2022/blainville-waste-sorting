@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Mapper
@@ -15,7 +16,7 @@ public interface SpecialNoticeMapper {
 
     Optional<SpecialNotice> findById(@Param("id") Long id);
 
-    void insert(SpecialNotice notice);
+    void insert(Map<String, Object> params);
 
     void update(SpecialNotice notice);
 

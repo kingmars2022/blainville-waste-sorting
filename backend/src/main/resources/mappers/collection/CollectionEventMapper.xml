@@ -2,21 +2,49 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.bienvenueblainville.collection.CollectionEventMapper">
+    <sql id="columns">
+        id, collection_date, sector, collection_type, bin_color, note_fr, note_en, note_zh, source_url
+    </sql>
+
     <select id="findUpcoming" resultType="com.bienvenueblainville.collection.CollectionEvent">
-        select
-            id,
-            collection_date,
-            sector,
-            collection_type,
-            bin_color,
-            note_fr,
-            note_en,
-            note_zh,
-            source_url
+        select <include refid="columns"/>
         from collection_event
         where collection_date between #{startDate} and #{endDate}
           and (sector = #{sector} or sector = 'all')
         order by collection_date asc, collection_type asc
     </select>
-</mapper>
 
+    <select id="findAll" resultType="com.bienvenueblainville.collection.CollectionEvent">
+        select <include refid="columns"/>
+        from collection_event
+        order by collection_date desc, collection_type asc
+    </select>
+
+    <select id="findById" resultType="com.bienvenueblainville.collection.CollectionEvent">
+        select <include refid="columns"/>
+        from collection_event
+        where id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" parameterType="map">
+        insert into collection_event (collection_date, sector, collection_type, bin_color, note_fr, note_en, note_zh, source_url)
+        values (#{collectionDate}, #{sector}, #{collectionType}, #{binColor}, #{noteFr}, #{noteEn}, #{noteZh}, #{sourceUrl})
+    </insert>
+
+    <update id="update">
+        update collection_event
+        set collection_date = #{collectionDate},
+            sector = #{sector},
+            collection_type = #{collectionType},
+            bin_color = #{binColor},
+            note_fr = #{noteFr},
+            note_en = #{noteEn},
+            note_zh = #{noteZh},
+            source_url = #{sourceUrl}
+        where id = #{id}
+    </update>
+
+    <delete id="delete">
+        delete from collection_event where id = #{id}
+    </delete>
+</mapper>

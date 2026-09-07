@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bienvenueblainville.sorting.SortingItemTranslationMapper">
+    <select id="findByItemId" resultType="com.bienvenueblainville.sorting.SortingItemTranslation">
+        select id, item_id, language_code, name, instruction, location
+        from sorting_item_translation
+        where item_id = #{itemId}
+    </select>
+
+    <insert id="insert">
+        insert into sorting_item_translation (item_id, language_code, name, instruction, location)
+        values (#{itemId}, #{languageCode}, #{name}, #{instruction}, #{location})
+    </insert>
+
+    <delete id="deleteByItemId">
+        delete from sorting_item_translation where item_id = #{itemId}
+    </delete>
+</mapper>

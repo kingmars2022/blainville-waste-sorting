@@ -27,7 +27,7 @@
         where id = #{id}
     </select>
 
-    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" parameterType="map">
         insert into special_notice (starts_on, ends_on, title_fr, title_en, title_zh, body_fr, body_en, body_zh, source_url, active)
         values (#{startsOn}, #{endsOn}, #{titleFr}, #{titleEn}, #{titleZh}, #{bodyFr}, #{bodyEn}, #{bodyZh}, #{sourceUrl}, #{active})
     </insert>

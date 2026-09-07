@@ -172,16 +172,21 @@ Authentication is implemented end to end:
 
 ### Admin Dashboard
 
-The admin dashboard is intended to maintain:
+The admin dashboard maintains:
 
 - Collection schedules.
 - Sorting entries.
 - Multilingual translations.
 - Special notices.
-- Seasonal collection rules.
-- Locations and official source links.
+- Locations.
 
-The **special notices** panel is connected end to end: it calls the protected `GET/POST/PUT/DELETE /api/admin/notices/**` endpoints, backed by the `special_notice` table through MyBatis. The **schedule**, **sorting items**, and **translations** panels are still frontend-only mockups — they are not yet wired to persistence.
+All of these are connected end to end through protected `/api/admin/**` endpoints, enforced by `hasRole("ADMIN")` and backed by MyBatis:
+
+- **Schedule** (`/api/admin/collections/**`) creates and deletes `collection_event` rows.
+- **Sorting items** (`/api/admin/sorting-items/**`) creates and deletes `sorting_item` rows together with their French/English/Chinese `sorting_item_translation` rows (name, instruction, and location) and per-language `sorting_item_keyword` entries, in one request. The API requires all three languages (`fr`/`en`/`zh`) on every sorting item, so **translations** and **locations** cannot go missing — the admin UI's "Translations" panel now just reports how many sorting items exist, since completeness is enforced by validation rather than tracked separately.
+- **Special notices** (`/api/admin/notices/**`) creates, updates, and deletes `special_notice` rows.
+
+Editing an existing collection or sorting item from the UI is not implemented yet — only create/list/delete.
 
 ## Tech Stack
 
@@ -314,7 +319,7 @@ Flyway migrations are stored in:
 backend/src/main/resources/db/migration/
 ```
 
-The current migration set includes initial schema creation, seed collection data, expanded sorting records, seasonal special collection records, and location fields.
+The current migration set (`V1`–`V6`) includes initial schema creation, seed collection data, expanded sorting records, seasonal special collection records, location fields, and an extended collection calendar seed.
 
 ## Internationalization
 
@@ -559,7 +564,7 @@ Completed:
 - Email/password registration and login with JWT authentication (`jjwt`), validated on every request by a custom `JwtAuthenticationFilter`.
 - Real `ADMIN` / `USER` authorization: `/api/admin/**` is enforced by Spring Security (`hasRole("ADMIN")`), and a single `ADMIN` account is seeded from environment variables on startup.
 - User preference persistence in MySQL (`GET/PUT /api/preferences`), synced with the frontend Pinia store for signed-in users.
-- Admin CRUD for special notices (`/api/admin/notices/**`), wired end to end from the admin UI through MyBatis to the `special_notice` table.
+- Admin CRUD for collection schedules, sorting items (with required French/English/Chinese translations, locations, and keywords), and special notices, wired end to end from the admin UI through MyBatis to `collection_event`, `sorting_item`/`sorting_item_translation`/`sorting_item_keyword`, and `special_notice`.
 - `HomeView` calls `GET /api/collections/upcoming` for the signed-in resident's sector and shows the real next collection (today/tomorrow framing, put-out/bring-back guidance) plus a short list of upcoming collections, instead of static sample data.
 - MyBatis mapper foundation and a normalized 7-table MySQL schema.
 - Flyway migrations for schema and seed data, including a rolling collection calendar seed (`V6`) so the home page has real upcoming dates to show.
@@ -578,7 +583,7 @@ Completed:
 Planned or in progress:
 
 - Sorting search backed by the `sorting_item` / `sorting_item_translation` / `sorting_item_keyword` tables instead of the static frontend dataset.
-- Admin CRUD for collection schedules, sorting items, and translations (currently frontend-only mockups).
+- Edit support for existing collection schedule and sorting item admin entries (currently create/list/delete only).
 - Complete import of official Blainville sorting records.
 - Future-year collection calendar import.
 - PWA manifest and service worker.
@@ -627,7 +632,7 @@ Current limitations:
 
 - The sorting data is an initial structured seed, not a complete official import, and it is still served from a static frontend dataset rather than the `sorting_item` tables.
 - The collection calendar seed (`V6__extend_collection_calendar_seed.sql`) is an illustrative recurring pattern covering September–October 2026, not the full official yearly calendar; it will need periodic extension (or a real calendar import) to keep showing upcoming dates.
-- The schedule, sorting item, and translation admin panels are UI mockups; only the special notices panel is connected to backend persistence.
+- The admin schedule and sorting item panels support create/list/delete only — editing an existing row isn't wired up yet.
 - Automated tests cover the JWT, auth, and collection services at the unit level; there is no integration test suite running against a real database yet.
 - Push notifications are not implemented.
 - The frontend is not yet containerized for production deployment.
@@ -638,7 +643,7 @@ Current limitations:
 Short-term:
 
 - Move sorting guide data into the `sorting_item` tables and expose a search API, replacing the static frontend dataset.
-- Extend admin CRUD to collection schedules, sorting items, and translations.
+- Add edit support to the admin schedule and sorting item panels (currently create/list/delete only).
 - Add integration tests (e.g. Testcontainers) that run Flyway migrations and exercise the auth, preference, and notice endpoints against a real MySQL instance.
 
 Medium-term:
