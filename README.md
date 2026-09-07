@@ -597,7 +597,7 @@ Completed:
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
-- An opt-in integration test suite (`mvn test -Pintegration-test`) boots the full Spring context — real `SecurityConfig`, real MyBatis mappers, a real MySQL database — and drives it through MockMvc: register/login, RBAC (403 for a resident on `/api/admin/**`, 401 for no/invalid token), notice date-range validation, and full admin CRUD for notices and sorting items. This class of test is what actually caught the bugs below; the mocked unit tests could not.
+- An opt-in integration test suite (`mvn test -Pintegration-test`) boots the full Spring context — real `SecurityConfig`, real MyBatis mappers, a real MySQL database — and drives it through MockMvc: register/login, RBAC (403 for a resident on `/api/admin/**`, 401 for no/invalid token), notice date-range validation, and full admin CRUD for notices and sorting items. This class of test is what actually caught the bugs below; the mocked unit tests could not. See [`docs/verification/verification-log.md`](docs/verification/verification-log.md) for the manual verification session (with screenshots) that preceded it.
 
 Planned or in progress:
 
