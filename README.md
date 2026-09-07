@@ -597,7 +597,7 @@ Completed:
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
-- An opt-in integration test suite (`mvn test -Pintegration-test`) boots the full Spring context — real `SecurityConfig`, real MyBatis mappers, a real MySQL database — and drives it through MockMvc: register/login, RBAC (403 for a resident on `/api/admin/**`, 401 for no/invalid token), notice date-range validation, and full admin CRUD for notices and sorting items. This class of test is what actually caught the bugs below; the mocked unit tests could not. See [`docs/verification/verification-log.md`](docs/verification/verification-log.md) for the manual verification session (with screenshots) that preceded it.
+- An opt-in integration test suite (`mvn test -Pintegration-test`) boots the full Spring context — real `SecurityConfig`, real MyBatis mappers, a real MySQL database — and drives it through MockMvc: register/login, RBAC (403 for a resident on `/api/admin/**`, 401 for no/invalid token), notice date-range validation, and full admin CRUD for notices and sorting items.
 
 Planned or in progress:
 
@@ -609,6 +609,25 @@ Planned or in progress:
 - Optional production frontend container.
 - Deployment configuration.
 - Run the integration test suite in CI against a containerized MySQL (e.g. Testcontainers), instead of requiring a developer-provisioned local database.
+
+## Live Verification
+
+Automated tests are necessary but not sufficient — they only assert what someone thought to write an assertion for. So beyond `mvn test` and `mvn test -Pintegration-test`, this project has also been driven end to end as a running application: a local MySQL instance, the real Spring Boot backend (`mvn spring-boot:run`), and the real Vite frontend (`npm run dev`), exercised through both `curl` and an actual browser (Playwright driving Chromium against the live frontend, which itself calls the live backend).
+
+That session is what caught six real bugs that unit tests, which mock away the Spring context, the security filter chain, and the database, structurally could not have caught — including an app that crashed on startup, admin endpoints that threw `ClassCastException` on every write, and a 401/403 mix-up that would have silently broken session-expiry handling in the browser. The full writeup, with sanitized request/response transcripts, is in [`docs/verification/verification-log.md`](docs/verification/verification-log.md).
+
+Screenshots from that session, taken against the live app:
+
+<table>
+<tr>
+<td><img src="docs/verification/screenshots/01-home.png" width="400" alt="Home page showing the real next collection, pulled live from GET /api/collections/upcoming" /><br />Home — live collection data</td>
+<td><img src="docs/verification/screenshots/02-sorting.png" width="400" alt="Sorting guide page with seasonal reminder cards" /><br />Sorting guide</td>
+</tr>
+<tr>
+<td><img src="docs/verification/screenshots/04-home-logged-in.png" width="400" alt="Home page after logging in through the real login form" /><br />Logged in as a resident</td>
+<td><img src="docs/verification/screenshots/05-admin.png" width="400" alt="Admin dashboard showing real collection schedule, sorting item, and notice data from the backend" /><br />Admin dashboard — real CRUD data</td>
+</tr>
+</table>
 
 ## Security Notes
 
