@@ -142,14 +142,14 @@ Supported interface languages:
 
 ### User Preferences
 
-The planned user preference model stores:
+The user preference model stores:
 
 - Selected language.
 - North or south sector.
 - Reminder preference.
 - Reminder time.
 
-The current frontend includes a preference store foundation. Persistent account-based preference storage is planned through the backend.
+Preferences are always kept in a Pinia store backed by `localStorage`. When a user is signed in, `GET/PUT /api/preferences` synchronizes the same preferences with the `user_preference` table, so they follow the account across devices.
 
 ### User Roles
 
@@ -159,6 +159,16 @@ The application uses two roles:
 - `ADMIN`: administrator account.
 
 There is no guest account mode in the planned product. Users are expected to sign in to save their preferences.
+
+Registration (`POST /api/auth/register`) always creates a `USER` account. A single `ADMIN` account is seeded automatically on backend startup from the `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` environment variables, so there is no public path to self-assign the `ADMIN` role.
+
+### Authentication
+
+Authentication is implemented end to end:
+
+- `POST /api/auth/register` and `POST /api/auth/login` issue a signed JWT (HMAC, via `jjwt`).
+- `Spring Security` validates the token on every request through a custom `JwtAuthenticationFilter`, loads the user through `AppUserDetailsService`, and enforces `hasRole("ADMIN")` on `/api/admin/**`.
+- The frontend stores the token in an auth Pinia store, attaches it as a `Bearer` header on API calls, and gates the `/admin` route with a navigation guard.
 
 ### Admin Dashboard
 
@@ -171,7 +181,7 @@ The admin dashboard is intended to maintain:
 - Seasonal collection rules.
 - Locations and official source links.
 
-The current admin dashboard is a frontend prototype. It provides the management layout and form structure. The next step is to connect it to protected backend `/api/admin/**` endpoints for real create, update, and delete operations.
+The **special notices** panel is connected end to end: it calls the protected `GET/POST/PUT/DELETE /api/admin/notices/**` endpoints, backed by the `special_notice` table through MyBatis. The **schedule**, **sorting items**, and **translations** panels are still frontend-only mockups — they are not yet wired to persistence.
 
 ## Tech Stack
 
@@ -388,7 +398,6 @@ This is the recommended local workflow.
 From the project root:
 
 ```bash
-cd /Users/siguangzhao/Documents/GitHub/my-projects/projects/Bienvenue_à_Blainville
 cp .env.example .env
 ```
 
@@ -398,6 +407,8 @@ Edit `.env` and replace placeholder values:
 DB_PASSWORD=replace_with_a_local_dev_password
 MYSQL_ROOT_PASSWORD=replace_with_a_local_root_password
 APP_JWT_SECRET=replace_with_a_long_random_development_secret
+APP_ADMIN_EMAIL=admin@blainville.local
+APP_ADMIN_PASSWORD=replace_with_a_local_dev_admin_password
 ```
 
 Start MySQL and the backend:
@@ -415,7 +426,7 @@ http://localhost:8080
 Start the frontend in a second terminal:
 
 ```bash
-cd /Users/siguangzhao/Documents/GitHub/my-projects/projects/Bienvenue_à_Blainville/frontend
+cd frontend
 npm install
 npm run dev
 ```
@@ -449,28 +460,35 @@ FLUSH PRIVILEGES;
 Start the backend:
 
 ```bash
-cd /Users/siguangzhao/Documents/GitHub/my-projects/projects/Bienvenue_à_Blainville/backend
-DB_PASSWORD='your_local_password' mvn spring-boot:run
+cd backend
+DB_PASSWORD='your_local_password' \
+APP_JWT_SECRET='a-long-random-development-secret' \
+APP_ADMIN_PASSWORD='your_local_admin_password' \
+mvn spring-boot:run
 ```
 
 Start the frontend:
 
 ```bash
-cd /Users/siguangzhao/Documents/GitHub/my-projects/projects/Bienvenue_à_Blainville/frontend
+cd frontend
 npm install
 npm run dev
 ```
 
 ## Environment Variables
 
-Backend database settings are read from environment variables:
+Backend settings are read from environment variables:
 
 ```yaml
 DB_URL
 DB_USERNAME
 DB_PASSWORD
 APP_JWT_SECRET
+APP_ADMIN_EMAIL
+APP_ADMIN_PASSWORD
 ```
+
+`APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` seed the first `ADMIN` account on startup, if no `ADMIN` account exists yet.
 
 The default backend configuration is in:
 
@@ -537,39 +555,36 @@ docker compose --env-file .env.example config
 
 Completed:
 
-- Initial full-stack project structure.
-- Spring Boot backend skeleton.
-- Vue 3 frontend skeleton.
-- MyBatis mapper foundation.
-- MySQL schema design.
+- Full-stack project structure with a Vue 3 frontend and a Spring Boot backend.
+- Email/password registration and login with JWT authentication (`jjwt`), validated on every request by a custom `JwtAuthenticationFilter`.
+- Real `ADMIN` / `USER` authorization: `/api/admin/**` is enforced by Spring Security (`hasRole("ADMIN")`), and a single `ADMIN` account is seeded from environment variables on startup.
+- User preference persistence in MySQL (`GET/PUT /api/preferences`), synced with the frontend Pinia store for signed-in users.
+- Admin CRUD for special notices (`/api/admin/notices/**`), wired end to end from the admin UI through MyBatis to the `special_notice` table.
+- MyBatis mapper foundation and a normalized 7-table MySQL schema.
 - Flyway migrations for schema and seed data.
-- Static multilingual sorting guide data.
+- Static multilingual sorting guide data on the frontend (`GET /api/collections/upcoming` is the only public read API so far; sorting search is not yet backend-driven — see Limitations).
 - Seasonal and special collection reminder data.
 - Location and address support for special sorting records.
-- French, English, and Chinese i18n foundation.
-- Admin dashboard frontend prototype.
+- French, English, and Chinese i18n foundation, including the auth and admin flows.
 - Docker Compose setup for MySQL and backend.
 - Backend Dockerfile.
-- Environment-variable-based database configuration.
+- Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
+- Unit tests for the JWT service, auth service, and collection service (`mvn test`).
 - Successful backend Maven build.
-- Successful frontend Vite production build.
-- Successful Docker Compose backend startup validation.
+- Successful frontend Vite production build (including `vue-tsc` type-checking).
+- `docker compose --env-file .env.example config` validates the Compose file.
 
 Planned or in progress:
 
-- Email and password registration.
-- Login endpoint.
-- JWT authentication.
-- Real `ADMIN` and `USER` authorization flow.
-- User preference persistence in MySQL.
-- Sorting search API.
-- Collection schedule API integration in the frontend.
-- Admin create, update, and delete operations.
+- Sorting search backed by the `sorting_item` / `sorting_item_translation` / `sorting_item_keyword` tables instead of the static frontend dataset.
+- Admin CRUD for collection schedules, sorting items, and translations (currently frontend-only mockups).
+- Collection schedule API integration in the frontend (`HomeView` still uses static sample data).
 - Complete import of official Blainville sorting records.
 - Future-year collection calendar import.
 - PWA manifest and service worker.
 - Optional production frontend container.
 - Deployment configuration.
+- Broader automated test coverage (integration tests against a real or containerized MySQL instance).
 
 ## Security Notes
 
@@ -577,20 +592,20 @@ The project is still in local development. Security-sensitive areas should be co
 
 Current security practices:
 
-- Real database passwords should not be committed.
+- Real database passwords and admin credentials should not be committed.
 - `.env.example` contains placeholders only.
-- Runtime secrets are passed through environment variables.
-- Admin endpoints are intended to be protected under `/api/admin/**`.
-- Spring Security is included as the foundation for authentication and authorization.
+- Runtime secrets (JWT signing key, seeded admin password) are passed through environment variables.
+- Passwords are hashed with BCrypt (`spring-security-crypto`); plaintext passwords are never stored.
+- Admin endpoints under `/api/admin/**` are protected by Spring Security and require a JWT for an account with the `ADMIN` role.
+- Public registration always creates a `USER` account; the `ADMIN` account is seeded server-side only.
+- CORS is restricted to the local Vite dev origin (`http://localhost:5173`).
 
 Production requirements:
 
-- Replace development secrets.
-- Implement real registration and login.
-- Store password hashes only.
+- Replace development secrets, including `APP_JWT_SECRET` and `APP_ADMIN_PASSWORD`.
 - Use HTTPS.
-- Restrict CORS.
-- Protect admin operations with proper role checks.
+- Restrict CORS to the production frontend origin.
+- Add rate limiting on `/api/auth/**` to reduce brute-force and registration abuse risk.
 - Review all official municipal data before public release.
 
 ## Official Sources
@@ -610,10 +625,10 @@ This project is not an official municipal website.
 
 Current limitations:
 
-- The sorting data is an initial structured seed, not a complete official import.
-- Collection schedule data is not complete for all future dates.
-- Admin forms are not yet connected to backend persistence.
-- Authentication and account registration are not fully implemented yet.
+- The sorting data is an initial structured seed, not a complete official import, and it is still served from a static frontend dataset rather than the `sorting_item` tables.
+- Collection schedule data is not complete for all future dates, and `HomeView` does not yet call `GET /api/collections/upcoming`.
+- The schedule, sorting item, and translation admin panels are UI mockups; only the special notices panel is connected to backend persistence.
+- Automated tests cover the JWT, auth, and collection services at the unit level; there is no integration test suite running against a real database yet.
 - Push notifications are not implemented.
 - The frontend is not yet containerized for production deployment.
 - All municipal rules should be verified against official Blainville sources before public use.
@@ -622,12 +637,10 @@ Current limitations:
 
 Short-term:
 
-- Implement email and password registration.
-- Implement login and JWT authentication.
-- Persist user preferences to MySQL.
-- Connect collection schedule data to the frontend.
-- Connect sorting search to backend APIs.
-- Connect admin forms to protected backend endpoints.
+- Move sorting guide data into the `sorting_item` tables and expose a search API, replacing the static frontend dataset.
+- Connect `HomeView` to `GET /api/collections/upcoming`.
+- Extend admin CRUD to collection schedules, sorting items, and translations.
+- Add integration tests (e.g. Testcontainers) that run Flyway migrations and exercise the auth, preference, and notice endpoints against a real MySQL instance.
 
 Medium-term:
 
@@ -643,7 +656,6 @@ Long-term:
 - Add optional postal-code or address-based sector detection.
 - Add production frontend containerization.
 - Deploy the full application.
-- Add automated tests for core scheduling, sorting search, and admin workflows.
 
 ## Engineering Highlights
 

@@ -368,6 +368,43 @@ textarea {
   padding: 14px;
 }
 
+.link-button {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.nav-logout {
+  color: white;
+  text-decoration: none;
+}
+
+.auth-form {
+  display: grid;
+  gap: 4px;
+  max-width: 420px;
+}
+
+.auth-form button {
+  background: #2f5d50;
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  margin-top: 8px;
+  padding: 12px;
+}
+
+.auth-error {
+  color: #a4342b;
+  font-weight: 600;
+}
+
 @media (max-width: 720px) {
   .app-header {
     align-items: flex-start;

@@ -19,6 +19,9 @@ app:
     issuer: bienvenue-a-blainville
     secret: ${APP_JWT_SECRET:change-this-development-secret-change-before-production}
     expires-in-minutes: 1440
+  admin:
+    email: ${APP_ADMIN_EMAIL:admin@blainville.local}
+    password: ${APP_ADMIN_PASSWORD:change-this-development-admin-password}
   collection:
     put-out-after: "20:00"
     put-out-before: "06:00"

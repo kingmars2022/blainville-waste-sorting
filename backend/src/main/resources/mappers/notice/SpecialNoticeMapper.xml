@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bienvenueblainville.notice.SpecialNoticeMapper">
+    <sql id="columns">
+        id, starts_on, ends_on, title_fr, title_en, title_zh, body_fr, body_en, body_zh, source_url, active
+    </sql>
+
+    <select id="findActive" resultType="com.bienvenueblainville.notice.SpecialNotice">
+        select <include refid="columns"/>
+        from special_notice
+        where active = true
+          and starts_on &lt;= #{today}
+          and ends_on &gt;= #{today}
+        order by starts_on asc
+    </select>
+
+    <select id="findAll" resultType="com.bienvenueblainville.notice.SpecialNotice">
+        select <include refid="columns"/>
+        from special_notice
+        order by starts_on desc
+    </select>
+
+    <select id="findById" resultType="com.bienvenueblainville.notice.SpecialNotice">
+        select <include refid="columns"/>
+        from special_notice
+        where id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into special_notice (starts_on, ends_on, title_fr, title_en, title_zh, body_fr, body_en, body_zh, source_url, active)
+        values (#{startsOn}, #{endsOn}, #{titleFr}, #{titleEn}, #{titleZh}, #{bodyFr}, #{bodyEn}, #{bodyZh}, #{sourceUrl}, #{active})
+    </insert>
+
+    <update id="update">
+        update special_notice
+        set starts_on = #{startsOn},
+            ends_on = #{endsOn},
+            title_fr = #{titleFr},
+            title_en = #{titleEn},
+            title_zh = #{titleZh},
+            body_fr = #{bodyFr},
+            body_en = #{bodyEn},
+            body_zh = #{bodyZh},
+            source_url = #{sourceUrl},
+            active = #{active}
+        where id = #{id}
+    </update>
+
+    <delete id="delete">
+        delete from special_notice where id = #{id}
+    </delete>
+</mapper>
