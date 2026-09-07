@@ -1,8 +1,8 @@
-# Bienvenue à Blainville
+# Blainville Waste Sorting Platform
 
 A full-stack municipal waste sorting and collection reminder web application for residents of Blainville, Quebec.
 
-`Bienvenue à Blainville` helps residents understand which bin to place outside, when collection happens, how common materials should be sorted, and where special items should be dropped off. The application is built with Vue 3, Spring Boot, MyBatis, MySQL, Flyway, Spring Security, and Docker Compose.
+`Blainville Waste Sorting Platform` helps residents understand which bin to place outside, when collection happens, how common materials should be sorted, and where special items should be dropped off. The application is built with Vue 3, Spring Boot, MyBatis, MySQL, Flyway, Spring Security, and Docker Compose.
 
 The first release is intentionally designed as a web application. Native iOS and Android apps are outside the initial scope.
 
@@ -182,11 +182,11 @@ The admin dashboard maintains:
 
 All of these are connected end to end through protected `/api/admin/**` endpoints, enforced by `hasRole("ADMIN")` and backed by MyBatis:
 
-- **Schedule** (`/api/admin/collections/**`) creates and deletes `collection_event` rows.
-- **Sorting items** (`/api/admin/sorting-items/**`) creates and deletes `sorting_item` rows together with their French/English/Chinese `sorting_item_translation` rows (name, instruction, and location) and per-language `sorting_item_keyword` entries, in one request. The API requires all three languages (`fr`/`en`/`zh`) on every sorting item, so **translations** and **locations** cannot go missing — the admin UI's "Translations" panel now just reports how many sorting items exist, since completeness is enforced by validation rather than tracked separately.
-- **Special notices** (`/api/admin/notices/**`) creates, updates, and deletes `special_notice` rows.
+- **Schedule** (`/api/admin/collections/**`) supports create, update, and delete of `collection_event` rows.
+- **Sorting items** (`/api/admin/sorting-items/**`) supports create, update, and delete of `sorting_item` rows together with their French/English/Chinese `sorting_item_translation` rows (name, instruction, and location) and per-language `sorting_item_keyword` entries, in one request. The API requires all three languages (`fr`/`en`/`zh`) on every sorting item, so **translations** and **locations** cannot go missing — the admin UI's "Translations" panel now just reports how many sorting items exist, since completeness is enforced by validation rather than tracked separately.
+- **Special notices** (`/api/admin/notices/**`) supports create, update, and delete of `special_notice` rows.
 
-Editing an existing collection or sorting item from the UI is not implemented yet — only create/list/delete.
+The backend `PUT /{id}` endpoints for schedule and sorting items work, but the admin UI only wires up create/list/delete for them so far — there's no edit form in the browser yet, even though the API supports it.
 
 ## Tech Stack
 
@@ -339,20 +339,14 @@ This avoids frustrating mixed-language states such as a French title with Englis
 
 ## Admin Workflow
 
-The admin role is intended to support long-term maintenance of municipal information.
+The admin role supports long-term maintenance of municipal information through the protected `/api/admin/**` API:
 
-Planned admin workflows:
+- Create, update, and delete collection events.
+- Add, update, or delete sorting items, each with required French/English/Chinese translations, an optional location per language, and per-language search keywords.
+- Publish, update, or delete special notices for holidays, service delays, or temporary municipal programs.
+- Store source URLs for traceability on collection events and sorting items.
 
-- Create and update collection events.
-- Add or correct sorting items.
-- Maintain French, English, and Chinese translations.
-- Add keywords for search.
-- Add seasonal service rules.
-- Add or update locations and addresses.
-- Publish special notices for holidays, service delays, or temporary municipal programs.
-- Store source URLs for traceability.
-
-The current admin page is a UI prototype. Backend persistence for admin operations is part of the roadmap.
+The admin UI itself currently exposes create/list/delete for schedule and sorting items (no edit form yet, though the API supports it) and full create/update/delete for special notices. Seasonal service rules beyond what's already seeded, and admin validation warnings for missing translations, are not built — see Roadmap.
 
 ## Docker Strategy
 
@@ -632,7 +626,7 @@ Current limitations:
 
 - The sorting data is an initial structured seed, not a complete official import, and it is still served from a static frontend dataset rather than the `sorting_item` tables.
 - The collection calendar seed (`V6__extend_collection_calendar_seed.sql`) is an illustrative recurring pattern covering September–October 2026, not the full official yearly calendar; it will need periodic extension (or a real calendar import) to keep showing upcoming dates.
-- The admin schedule and sorting item panels support create/list/delete only — editing an existing row isn't wired up yet.
+- The admin UI's schedule and sorting item panels only wire up create/list/delete — the backend `PUT /{id}` endpoints support full updates, but there's no edit form in the browser yet.
 - Automated tests cover the JWT, auth, and collection services at the unit level; there is no integration test suite running against a real database yet.
 - Push notifications are not implemented.
 - The frontend is not yet containerized for production deployment.
@@ -643,7 +637,7 @@ Current limitations:
 Short-term:
 
 - Move sorting guide data into the `sorting_item` tables and expose a search API, replacing the static frontend dataset.
-- Add edit support to the admin schedule and sorting item panels (currently create/list/delete only).
+- Add an edit form to the admin schedule and sorting item panels (the backend `PUT /{id}` endpoints already support it).
 - Add integration tests (e.g. Testcontainers) that run Flyway migrations and exercise the auth, preference, and notice endpoints against a real MySQL instance.
 
 Medium-term:
@@ -674,6 +668,6 @@ Long-term:
 
 ## Project Positioning
 
-`Bienvenue à Blainville` is a resident-facing helper tool. It is designed to make official municipal information easier to search and understand, but it does not replace Blainville's official website.
+`Blainville Waste Sorting Platform` is a resident-facing helper tool. It is designed to make official municipal information easier to search and understand, but it does not replace Blainville's official website.
 
 Before public deployment, all collection dates, sorting rules, locations, and service instructions should be reviewed against official municipal sources and maintained through the admin workflow.
