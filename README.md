@@ -560,9 +560,10 @@ Completed:
 - Real `ADMIN` / `USER` authorization: `/api/admin/**` is enforced by Spring Security (`hasRole("ADMIN")`), and a single `ADMIN` account is seeded from environment variables on startup.
 - User preference persistence in MySQL (`GET/PUT /api/preferences`), synced with the frontend Pinia store for signed-in users.
 - Admin CRUD for special notices (`/api/admin/notices/**`), wired end to end from the admin UI through MyBatis to the `special_notice` table.
+- `HomeView` calls `GET /api/collections/upcoming` for the signed-in resident's sector and shows the real next collection (today/tomorrow framing, put-out/bring-back guidance) plus a short list of upcoming collections, instead of static sample data.
 - MyBatis mapper foundation and a normalized 7-table MySQL schema.
-- Flyway migrations for schema and seed data.
-- Static multilingual sorting guide data on the frontend (`GET /api/collections/upcoming` is the only public read API so far; sorting search is not yet backend-driven — see Limitations).
+- Flyway migrations for schema and seed data, including a rolling collection calendar seed (`V6`) so the home page has real upcoming dates to show.
+- Static multilingual sorting guide data on the frontend (sorting search is not yet backend-driven — see Limitations).
 - Seasonal and special collection reminder data.
 - Location and address support for special sorting records.
 - French, English, and Chinese i18n foundation, including the auth and admin flows.
@@ -578,7 +579,6 @@ Planned or in progress:
 
 - Sorting search backed by the `sorting_item` / `sorting_item_translation` / `sorting_item_keyword` tables instead of the static frontend dataset.
 - Admin CRUD for collection schedules, sorting items, and translations (currently frontend-only mockups).
-- Collection schedule API integration in the frontend (`HomeView` still uses static sample data).
 - Complete import of official Blainville sorting records.
 - Future-year collection calendar import.
 - PWA manifest and service worker.
@@ -626,7 +626,7 @@ This project is not an official municipal website.
 Current limitations:
 
 - The sorting data is an initial structured seed, not a complete official import, and it is still served from a static frontend dataset rather than the `sorting_item` tables.
-- Collection schedule data is not complete for all future dates, and `HomeView` does not yet call `GET /api/collections/upcoming`.
+- The collection calendar seed (`V6__extend_collection_calendar_seed.sql`) is an illustrative recurring pattern covering September–October 2026, not the full official yearly calendar; it will need periodic extension (or a real calendar import) to keep showing upcoming dates.
 - The schedule, sorting item, and translation admin panels are UI mockups; only the special notices panel is connected to backend persistence.
 - Automated tests cover the JWT, auth, and collection services at the unit level; there is no integration test suite running against a real database yet.
 - Push notifications are not implemented.
@@ -638,7 +638,6 @@ Current limitations:
 Short-term:
 
 - Move sorting guide data into the `sorting_item` tables and expose a search API, replacing the static frontend dataset.
-- Connect `HomeView` to `GET /api/collections/upcoming`.
 - Extend admin CRUD to collection schedules, sorting items, and translations.
 - Add integration tests (e.g. Testcontainers) that run Flyway migrations and exercise the auth, preference, and notice endpoints against a real MySQL instance.
 

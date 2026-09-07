@@ -99,6 +99,10 @@ a {
   background: #202421;
 }
 
+.bin-card.none {
+  background: #77837c;
+}
+
 label {
   display: grid;
   gap: 8px;
