@@ -42,7 +42,7 @@ public class SortingItemService {
         params.put("sourceUrl", request.sourceUrl());
 
         itemMapper.insert(params);
-        Long itemId = (Long) params.get("id");
+        Long itemId = ((Number) params.get("id")).longValue();
 
         saveTranslationsAndKeywords(itemId, request);
         return toResponse(requireItem(itemId));

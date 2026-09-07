@@ -31,7 +31,9 @@ class SpecialNoticeServiceTest {
     void createReadsTheGeneratedIdBackFromTheSharedParamsMap() {
         doAnswer(invocation -> {
             Map<String, Object> params = invocation.getArgument(0);
-            params.put("id", 7L);
+            // MySQL's JDBC driver hands back generated keys for BIGINT columns
+            // as BigInteger, not Long — assert against that, not a Long literal.
+            params.put("id", java.math.BigInteger.valueOf(7));
             return null;
         }).when(mapper).insert(any());
 

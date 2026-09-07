@@ -43,7 +43,7 @@ public class CollectionService {
         params.put("sourceUrl", request.sourceUrl());
 
         mapper.insert(params);
-        Long generatedId = (Long) params.get("id");
+        Long generatedId = ((Number) params.get("id")).longValue();
         return mapper.findById(generatedId).orElseThrow();
     }
 

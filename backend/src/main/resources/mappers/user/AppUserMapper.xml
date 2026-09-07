@@ -20,7 +20,7 @@
         where role = #{role}
     </select>
 
-    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insert">
         insert into app_user (email, password_hash, role)
         values (#{email}, #{passwordHash}, #{role})
     </insert>

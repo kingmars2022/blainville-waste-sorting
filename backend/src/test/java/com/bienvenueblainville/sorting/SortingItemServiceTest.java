@@ -63,7 +63,9 @@ class SortingItemServiceTest {
         // Map instance passed as the insert parameter, adding the generated "id".
         doAnswer(invocation -> {
             Map<String, Object> params = invocation.getArgument(0);
-            params.put("id", 42L);
+            // MySQL's JDBC driver hands back generated keys for BIGINT columns
+            // as BigInteger, not Long — assert against that, not a Long literal.
+            params.put("id", java.math.BigInteger.valueOf(42));
             return null;
         }).when(itemMapper).insert(any());
 
@@ -84,7 +86,7 @@ class SortingItemServiceTest {
     void createTrimsBlankKeywordsBeforeInsertingAndSkipsEmptyLanguages() {
         doAnswer(invocation -> {
             Map<String, Object> params = invocation.getArgument(0);
-            params.put("id", 1L);
+            params.put("id", java.math.BigInteger.valueOf(1));
             return null;
         }).when(itemMapper).insert(any());
         when(itemMapper.findById(1L)).thenReturn(Optional.of(
