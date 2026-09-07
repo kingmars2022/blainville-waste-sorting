@@ -456,6 +456,16 @@ GRANT ALL PRIVILEGES ON bienvenue_blainville.* TO 'blainville_app'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
+Optional, only if you want to run the integration test suite (`mvn test -Pintegration-test`): create a second database for it, so tests never touch your working data.
+
+```sql
+CREATE DATABASE bienvenue_blainville_test
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON bienvenue_blainville_test.* TO 'blainville_app'@'localhost';
+FLUSH PRIVILEGES;
+```
+
 Start the backend:
 
 ```bash
@@ -530,6 +540,20 @@ cd backend
 mvn -q -DskipTests package
 ```
 
+Run backend unit tests (fast, no database required):
+
+```bash
+cd backend
+mvn test
+```
+
+Run the full test suite including integration tests (requires a running MySQL matching `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, and a `bienvenue_blainville_test` database granted to that user — see "Option B: Manual Local Backend" above for creating the user):
+
+```bash
+cd backend
+mvn test -Pintegration-test
+```
+
 Build frontend:
 
 ```bash
@@ -573,17 +597,18 @@ Completed:
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
+- An opt-in integration test suite (`mvn test -Pintegration-test`) boots the full Spring context — real `SecurityConfig`, real MyBatis mappers, a real MySQL database — and drives it through MockMvc: register/login, RBAC (403 for a resident on `/api/admin/**`, 401 for no/invalid token), notice date-range validation, and full admin CRUD for notices and sorting items. This class of test is what actually caught the bugs below; the mocked unit tests could not.
 
 Planned or in progress:
 
 - Sorting search backed by the `sorting_item` / `sorting_item_translation` / `sorting_item_keyword` tables instead of the static frontend dataset.
-- Edit support for existing collection schedule and sorting item admin entries (currently create/list/delete only).
+- Edit support for existing collection schedule and sorting item admin entries (currently create/list/delete only in the UI — the backend `PUT /{id}` endpoints already support it).
 - Complete import of official Blainville sorting records.
 - Future-year collection calendar import.
 - PWA manifest and service worker.
 - Optional production frontend container.
 - Deployment configuration.
-- Broader automated test coverage (integration tests against a real or containerized MySQL instance).
+- Run the integration test suite in CI against a containerized MySQL (e.g. Testcontainers), instead of requiring a developer-provisioned local database.
 
 ## Security Notes
 
@@ -598,6 +623,8 @@ Current security practices:
 - Admin endpoints under `/api/admin/**` are protected by Spring Security and require a JWT for an account with the `ADMIN` role.
 - Public registration always creates a `USER` account; the `ADMIN` account is seeded server-side only.
 - CORS is restricted to the local Vite dev origin (`http://localhost:5173`).
+- Missing or invalid credentials return `401 Unauthorized`; a valid, authenticated request lacking the `ADMIN` role returns `403 Forbidden` — a custom `AuthenticationEntryPoint`/`AccessDeniedHandler` pair keeps these distinct (Spring Security's default collapses both to 403), and `/error` is explicitly `permitAll()` so the internal error-page forward that follows `sendError()` doesn't get reauthenticated as an anonymous request and overwrite the intended status.
+- All admin write endpoints use MyBatis parameterized queries (`#{...}` bindings), not string-concatenated SQL, so user-supplied text is never interpreted as SQL.
 
 Production requirements:
 
@@ -627,7 +654,7 @@ Current limitations:
 - The sorting data is an initial structured seed, not a complete official import, and it is still served from a static frontend dataset rather than the `sorting_item` tables.
 - The collection calendar seed (`V6__extend_collection_calendar_seed.sql`) is an illustrative recurring pattern covering September–October 2026, not the full official yearly calendar; it will need periodic extension (or a real calendar import) to keep showing upcoming dates.
 - The admin UI's schedule and sorting item panels only wire up create/list/delete — the backend `PUT /{id}` endpoints support full updates, but there's no edit form in the browser yet.
-- Automated tests cover the JWT, auth, and collection services at the unit level; there is no integration test suite running against a real database yet.
+- The integration test suite requires a developer-provisioned local MySQL matching `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`; it isn't wired into CI yet and doesn't use an ephemeral/containerized database.
 - Push notifications are not implemented.
 - The frontend is not yet containerized for production deployment.
 - All municipal rules should be verified against official Blainville sources before public use.
@@ -638,7 +665,7 @@ Short-term:
 
 - Move sorting guide data into the `sorting_item` tables and expose a search API, replacing the static frontend dataset.
 - Add an edit form to the admin schedule and sorting item panels (the backend `PUT /{id}` endpoints already support it).
-- Add integration tests (e.g. Testcontainers) that run Flyway migrations and exercise the auth, preference, and notice endpoints against a real MySQL instance.
+- Wire the integration test suite into CI against a containerized MySQL (e.g. Testcontainers) instead of a developer-provisioned local database.
 
 Medium-term:
 

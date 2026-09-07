@@ -96,6 +96,13 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>integration</excludedGroups>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
@@ -109,4 +116,34 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <!--
+                Integration tests boot the full Spring context and MyBatis
+                mappers against a real MySQL database, exercising the actual
+                security filter chain end to end (the class of bug plain
+                Mockito-based unit tests cannot catch — see AuthServiceTest
+                vs AuthenticationFlowIntegrationTest). They require a running
+                MySQL reachable via the same DB_URL/DB_USERNAME/DB_PASSWORD
+                environment variables the application itself uses (see
+                README "Running Locally"), so they are opt-in rather than
+                part of the default `mvn test` run.
+
+                Run with: mvn test -Pintegration-test
+            -->
+            <id>integration-test</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <excludedGroups combine.self="override"></excludedGroups>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

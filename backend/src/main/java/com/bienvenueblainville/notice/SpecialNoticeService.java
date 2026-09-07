@@ -30,6 +30,8 @@ public class SpecialNoticeService {
     }
 
     public SpecialNotice create(NoticeRequest request) {
+        requireValidDateRange(request);
+
         Map<String, Object> params = new HashMap<>();
         params.put("startsOn", request.startsOn());
         params.put("endsOn", request.endsOn());
@@ -49,6 +51,7 @@ public class SpecialNoticeService {
 
     public SpecialNotice update(Long id, NoticeRequest request) {
         requireExists(id);
+        requireValidDateRange(request);
         mapper.update(toNotice(id, request));
         return mapper.findById(id).orElseThrow();
     }
@@ -56,6 +59,12 @@ public class SpecialNoticeService {
     public void delete(Long id) {
         requireExists(id);
         mapper.delete(id);
+    }
+
+    private void requireValidDateRange(NoticeRequest request) {
+        if (request.endsOn().isBefore(request.startsOn())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endsOn must not be before startsOn.");
+        }
     }
 
     private void requireExists(Long id) {
