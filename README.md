@@ -102,7 +102,8 @@ cd backend && mvn test
 ```
 
 Integration tests are opt-in locally because they need a database (CI always
-runs them):
+runs them). With the default `.env.example` values copied into `.env`, they
+run against the MySQL service exposed by Docker Compose on port 3307:
 
 ```bash
 docker compose up -d mysql

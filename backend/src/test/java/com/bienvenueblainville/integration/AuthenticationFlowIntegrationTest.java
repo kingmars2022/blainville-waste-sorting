@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,14 +45,24 @@ class AuthenticationFlowIntegrationTest {
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
-        registry.add("DB_URL", () -> "jdbc:mysql://localhost:3306/bienvenue_blainville_test"
+        String host = env("DB_HOST", "localhost");
+        String port = env("DB_PORT", env("MYSQL_PORT", "3307"));
+        String database = env("DB_NAME", "bienvenue_blainville");
+
+        registry.add("DB_URL", () -> "jdbc:mysql://" + host + ":" + port + "/" + database
                 + "?useUnicode=true&characterEncoding=utf8&serverTimezone=America/Toronto"
                 + "&allowPublicKeyRetrieval=true&useSSL=false");
-        registry.add("DB_USERNAME", () -> "blainville_app");
-        registry.add("DB_PASSWORD", () -> "DevLocalPass123!");
+        registry.add("DB_USERNAME", () -> env("DB_USERNAME", "blainville_app"));
+        registry.add("DB_PASSWORD", () -> env("DB_PASSWORD", "replace_with_a_local_dev_password"));
         registry.add("APP_JWT_SECRET", () -> "integration-test-jwt-secret-long-enough-for-hmac-sha384");
         registry.add("APP_ADMIN_EMAIL", () -> ADMIN_EMAIL);
         registry.add("APP_ADMIN_PASSWORD", () -> ADMIN_PASSWORD);
+    }
+
+    private static String env(String name, String fallback) {
+        return Optional.ofNullable(System.getenv(name))
+                .filter(value -> !value.isBlank())
+                .orElse(fallback);
     }
 
     @Autowired
