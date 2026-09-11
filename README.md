@@ -61,16 +61,26 @@ on every write, and a 401/403 mix-up that would have silently broken
 session-expiry handling in the browser. Full transcripts:
 [`docs/verification/verification-log.md`](docs/verification/verification-log.md).
 
+It also holds up under concurrent load: 50, 100, and 200 simulated residents
+registering and loading the home page at once, against the real backend and a
+real MySQL instance — 100% success at every level tested, zero failed
+requests. Method, numbers, and honest caveats:
+[`docs/verification/load-test-results.md`](docs/verification/load-test-results.md).
+
 <table>
 <tr>
-<td><img src="docs/verification/screenshots/01-home.png" width="380" alt="Home page showing the real next collection, pulled live from GET /api/collections/upcoming" /><br />Home — live collection data</td>
-<td><img src="docs/verification/screenshots/02-sorting.png" width="380" alt="Sorting guide page with seasonal reminder cards" /><br />Sorting guide</td>
+<td><img src="docs/verification/screenshots/01-home-fr.png" width="380" alt="Home page showing the real next collection, pulled live from GET /api/collections/upcoming" /><br />Home — live collection data</td>
+<td><img src="docs/verification/screenshots/02-sorting-search.png" width="380" alt="Sorting guide page mid-search, with seasonal reminder cards" /><br />Sorting guide — live search</td>
 </tr>
 <tr>
-<td><img src="docs/verification/screenshots/04-home-logged-in.png" width="380" alt="Home page after logging in through the real login form" /><br />Logged in as a resident</td>
-<td><img src="docs/verification/screenshots/05-admin.png" width="380" alt="Admin dashboard showing real collection schedule, sorting item, and notice data from the backend" /><br />Admin dashboard — real CRUD data</td>
+<td><img src="docs/verification/screenshots/05-home-logged-in-resident.png" width="380" alt="Home page after logging in through the real login form" /><br />Logged in as a resident</td>
+<td><img src="docs/verification/screenshots/09-admin-dashboard.png" width="380" alt="Admin dashboard showing real collection schedule, sorting item, and notice data from the backend" /><br />Admin dashboard — real CRUD data</td>
 </tr>
 </table>
+
+Every feature — settings, login/registration, and the French/English/Chinese
+switch — has its own screenshot alongside the feature it demonstrates in
+[`docs/design-notes.md`](docs/design-notes.md#features).
 
 ## Tests
 

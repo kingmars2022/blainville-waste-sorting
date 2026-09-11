@@ -107,14 +107,24 @@ POST /api/admin/notices {"titleFr": "Robert'); DROP TABLE special_notice;--", ..
 
 Captured from the real running frontend (`http://localhost:5173`) against
 the real running backend, using a seeded/test dataset — see
-`screenshots/` in this folder:
+`screenshots/` in this folder (also embedded inline in the README's
+Features section):
 
-- `01-home.png` — home page, live data from `GET /api/collections/upcoming`
-- `02-sorting.png` — sorting guide page
+- `01-home-fr.png` — home page, live data from `GET /api/collections/upcoming`
+- `02-sorting-search.png` — sorting page mid-search ("pizza"), with seasonal
+  reminder cards and a location field visible
 - `03-login.png` — login form
-- `04-home-logged-in.png` — home page after signing in through the real UI login flow
-- `05-admin.png` — admin dashboard: real collection schedule (20 rows),
-  sorting items (15 rows), and the notices panel, all backed by the live API
+- `04-register.png` — registration form
+- `05-home-logged-in-resident.png` — home page after signing in through the
+  real UI login flow
+- `06-settings.png` — settings page (language, sector, reminders)
+- `07-home-english.png` / `08-home-chinese.png` — the same home page and
+  account, switched to English and Chinese, proving the i18n switch covers
+  the whole page (nav, dates, bin names, instructions) rather than being
+  partial
+- `09-admin-dashboard.png` — admin dashboard: real collection schedule
+  (20 rows), sorting items (15 rows), and 1 real notice, all backed by the
+  live API
 
 ## Test suite result at the time of this session
 

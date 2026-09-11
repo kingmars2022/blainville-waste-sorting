@@ -67,6 +67,10 @@ It is intended to show:
 
 Blainville's general placement guidance is represented in the app: bins should be placed after 20:00 the evening before collection or before 06:00 on collection day, and empty bins should be brought back before 20:00 on collection day.
 
+<img src="verification/screenshots/01-home-fr.png" width="600" alt="Home page showing the next collection and a row of upcoming collection cards, live from GET /api/collections/upcoming" />
+
+*Live data from `GET /api/collections/upcoming` — this is a real running instance, not a mockup.*
+
 ### Sector-Based Schedule
 
 Users select whether they live:
@@ -75,6 +79,8 @@ Users select whether they live:
 - South of boulevard de la Seigneurie.
 
 The first version uses manual sector selection instead of postal-code inference. This is simpler, more transparent, and avoids inaccurate assumptions for the MVP.
+
+<img src="verification/screenshots/06-settings.png" width="500" alt="Settings page with language, sector, and reminder controls" />
 
 ### Waste Sorting Search
 
@@ -102,6 +108,10 @@ Each sorting entry can include:
 - Location or address.
 - Official source URL.
 
+<img src="verification/screenshots/02-sorting-search.png" width="600" alt="Sorting page with a live search for 'pizza', filtered results, seasonal reminder cards, and a location field" />
+
+*A live search for "pizza" — filtering, seasonal reminder cards, and the location field are all visible in this one screenshot (see the next two sections).*
+
 ### Seasonal and Special Collection Reminders
 
 The app includes reminders for collection services that do not fit into regular bin pickup.
@@ -114,6 +124,8 @@ Examples:
 - Personal document shredding is offered at the ecocentre on specific dates.
 - Cedar trimmings are handled through Arbressence.
 - Ecocentre-related materials include a drop-off location.
+
+The four cards across the top of the sorting page screenshot above (Encombrants, Branches, Sapins de Noel, Dechiquetage de documents personnels) are exactly these reminders, rendered live from the `special` sorting items in `sorting_item`/`sorting_item_translation`.
 
 ### Location and Address Guidance
 
@@ -140,6 +152,15 @@ Supported interface languages:
 - English.
 - Chinese.
 
+<table>
+<tr>
+<td><img src="verification/screenshots/07-home-english.png" width="380" alt="Home page in English" /><br />English</td>
+<td><img src="verification/screenshots/08-home-chinese.png" width="380" alt="Home page in Chinese" /><br />Chinese (简体中文)</td>
+</tr>
+</table>
+
+*Same account, same data, switched entirely — nav labels, dates, bin names, and instructions all change together. Compare against the French home page screenshot further above.*
+
 ### User Preferences
 
 The user preference model stores:
@@ -149,7 +170,7 @@ The user preference model stores:
 - Reminder preference.
 - Reminder time.
 
-Preferences are always kept in a Pinia store backed by `localStorage`. When a user is signed in, `GET/PUT /api/preferences` synchronizes the same preferences with the `user_preference` table, so they follow the account across devices.
+Preferences are always kept in a Pinia store backed by `localStorage`. When a user is signed in, `GET/PUT /api/preferences` synchronizes the same preferences with the `user_preference` table, so they follow the account across devices. See the Settings screenshot under "Sector-Based Schedule" above.
 
 ### User Roles
 
@@ -162,6 +183,13 @@ There is no guest account mode in the planned product. Users are expected to sig
 
 Registration (`POST /api/auth/register`) always creates a `USER` account. A single `ADMIN` account is seeded automatically on backend startup from the `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` environment variables, so there is no public path to self-assign the `ADMIN` role.
 
+<table>
+<tr>
+<td><img src="verification/screenshots/03-login.png" width="380" alt="Login page" /><br />Login</td>
+<td><img src="verification/screenshots/04-register.png" width="380" alt="Registration page" /><br />Registration</td>
+</tr>
+</table>
+
 ### Authentication
 
 Authentication is implemented end to end:
@@ -169,6 +197,10 @@ Authentication is implemented end to end:
 - `POST /api/auth/register` and `POST /api/auth/login` issue a signed JWT (HMAC, via `jjwt`).
 - `Spring Security` validates the token on every request through a custom `JwtAuthenticationFilter`, loads the user through `AppUserDetailsService`, and enforces `hasRole("ADMIN")` on `/api/admin/**`.
 - The frontend stores the token in an auth Pinia store, attaches it as a `Bearer` header on API calls, and gates the `/admin` route with a navigation guard.
+
+<img src="verification/screenshots/05-home-logged-in-resident.png" width="600" alt="Home page after logging in as a resident through the real login form" />
+
+*Logged in through the actual login form above — this is what a resident sees on `/` afterward, with `Log out` now in the nav bar.*
 
 ### Admin Dashboard
 
@@ -187,6 +219,10 @@ All of these are connected end to end through protected `/api/admin/**` endpoint
 - **Special notices** (`/api/admin/notices/**`) supports create, update, and delete of `special_notice` rows.
 
 The backend `PUT /{id}` endpoints for schedule and sorting items work, but the admin UI only wires up create/list/delete for them so far — there's no edit form in the browser yet, even though the API supports it.
+
+<img src="verification/screenshots/09-admin-dashboard.png" width="700" alt="Admin dashboard showing 20 real collection events, 15 real sorting items, and 1 real notice, all loaded from the backend" />
+
+*Logged in as the seeded `ADMIN` account — every number and row here (20 collection events, 15 sorting items, 1 notice) is real data loaded from `/api/admin/**`, not placeholder content.*
 
 ## Tech Stack
 
@@ -614,20 +650,21 @@ Planned or in progress:
 
 Automated tests are necessary but not sufficient — they only assert what someone thought to write an assertion for. So beyond `mvn test` and `mvn test -Pintegration-test`, this project has also been driven end to end as a running application: a local MySQL instance, the real Spring Boot backend (`mvn spring-boot:run`), and the real Vite frontend (`npm run dev`), exercised through both `curl` and an actual browser (Playwright driving Chromium against the live frontend, which itself calls the live backend).
 
-That session is what caught six real bugs that unit tests, which mock away the Spring context, the security filter chain, and the database, structurally could not have caught — including an app that crashed on startup, admin endpoints that threw `ClassCastException` on every write, and a 401/403 mix-up that would have silently broken session-expiry handling in the browser. The full writeup, with sanitized request/response transcripts, is in [`docs/verification/verification-log.md`](docs/verification/verification-log.md).
+That session is what caught six real bugs that unit tests, which mock away the Spring context, the security filter chain, and the database, structurally could not have caught — including an app that crashed on startup, admin endpoints that threw `ClassCastException` on every write, and a 401/403 mix-up that would have silently broken session-expiry handling in the browser. The full writeup, with sanitized request/response transcripts, is in [`verification/verification-log.md`](verification/verification-log.md).
 
-Screenshots from that session, taken against the live app:
+Every screenshot from that session is embedded inline under the feature it demonstrates in the Features section above, rather than collected in a single gallery here.
 
-<table>
-<tr>
-<td><img src="docs/verification/screenshots/01-home.png" width="400" alt="Home page showing the real next collection, pulled live from GET /api/collections/upcoming" /><br />Home — live collection data</td>
-<td><img src="docs/verification/screenshots/02-sorting.png" width="400" alt="Sorting guide page with seasonal reminder cards" /><br />Sorting guide</td>
-</tr>
-<tr>
-<td><img src="docs/verification/screenshots/04-home-logged-in.png" width="400" alt="Home page after logging in through the real login form" /><br />Logged in as a resident</td>
-<td><img src="docs/verification/screenshots/05-admin.png" width="400" alt="Admin dashboard showing real collection schedule, sorting item, and notice data from the backend" /><br />Admin dashboard — real CRUD data</td>
-</tr>
-</table>
+### Can it handle 50+ concurrent users?
+
+Tested rather than guessed: [`verification/load_test.py`](verification/load_test.py) fires N concurrent virtual users at the real backend + real MySQL, each one registering and loading the home page — registration deliberately chosen as the worst case, since it's the one request that pays both BCrypt's cost and a database write. Full methodology and caveats in [`verification/load-test-results.md`](verification/load-test-results.md).
+
+| Concurrent users | Success rate | Register latency (avg / p95) | Home-load latency (avg / p95) |
+|---:|---:|---|---|
+| 50  | 50/50 (100%)   | 1439 / 1574 ms | 231 / 329 ms |
+| 100 | 100/100 (100%) | 2353 / 2976 ms | 117 / 462 ms |
+| 200 | 200/200 (100%) | 4392 / 5724 ms | 594 / 2264 ms |
+
+Zero failed requests up to 200 simultaneous registrations, on an untuned single-machine dev setup (Spring Boot's default 10-connection HikariCP pool, no caching, no load balancer). So: **yes, for 50 real concurrent users this held up without errors in testing** — see the linked results for what this test does and doesn't prove before treating it as a production capacity guarantee.
 
 ## Security Notes
 
