@@ -301,7 +301,16 @@ All of these are connected end to end through protected `/api/admin/**` endpoint
 - **Sorting items** (`/api/admin/sorting-items/**`) supports create, update, and delete of `sorting_item` rows together with their French/English/Chinese `sorting_item_translation` rows (name, instruction, and location) and per-language `sorting_item_keyword` entries, in one request. The API requires all three languages (`fr`/`en`/`zh`) on every sorting item, so **translations** and **locations** cannot go missing — the admin UI's "Translations" panel now just reports how many sorting items exist, since completeness is enforced by validation rather than tracked separately.
 - **Special notices** (`/api/admin/notices/**`) supports create, update, and delete of `special_notice` rows.
 
-The backend `PUT /{id}` endpoints for schedule and sorting items work, but the admin UI only wires up create/list/delete for them so far — there's no edit form in the browser yet, even though the API supports it.
+All three panels now edit as well as create: clicking **Modifier** on a row
+loads it into the panel's own form, which becomes a save form until it is
+submitted or cancelled. There is no second form to keep in sync with the first.
+
+The fields that carry the most risk here are the ones added by `V10`/`V11` -
+the per-language examples under a sorting card and its seasonal availability.
+A form that did not load and resend them would blank them on the first edit,
+which is precisely the split those migrations existed to end, so the sorting
+form carries all five fields per language and the schedule form carries the
+trilingual note and source URL that the generated calendar rows arrive with.
 
 <img src="verification/screenshots/09-admin-dashboard.png" width="700" alt="Admin dashboard showing 20 real collection events, 15 real sorting items, and 1 real notice, all loaded from the backend" />
 
@@ -654,7 +663,7 @@ The admin role supports long-term maintenance of municipal information through t
 - Publish, update, or delete special notices for holidays, service delays, or temporary municipal programs.
 - Store source URLs for traceability on collection events and sorting items.
 
-The admin UI itself currently exposes create/list/delete for schedule and sorting items (no edit form yet, though the API supports it) and full create/update/delete for special notices. Seasonal service rules beyond what's already seeded, and admin validation warnings for missing translations, are not built — see Roadmap.
+The admin UI exposes full create/edit/delete for all three: the collection schedule, sorting items, and special notices. Seasonal service rules beyond what's already seeded, and admin validation warnings for missing translations, are not built — see Roadmap.
 
 ## Docker Strategy
 
@@ -966,7 +975,6 @@ Completed:
 
 Planned or in progress:
 
-- Edit support for existing collection schedule and sorting item admin entries (currently create/list/delete only in the UI — the backend `PUT /{id}` endpoints already support it).
 - Complete import of official Blainville sorting records.
 - Future-year collection calendar import.
 - PWA manifest and service worker.
@@ -1069,8 +1077,8 @@ Current limitations:
 
 - The sorting data is an initial structured seed, not a complete official import. It is served from the `sorting_item` tables to residents, the assistant, the photo lookup and the admin console alike - the static frontend copy was removed in `V10`/`V11`.
 - The collection patterns in `collection_schedule_rule` are an illustrative weekly/biweekly schedule, not the official municipal calendar. The calendar no longer expires, but what it generates is still a plausible pattern rather than imported truth, and real holiday shifts are not in it.
-- The admin UI's schedule and sorting item panels only wire up create/list/delete. The backend `PUT /{id}` endpoints support full updates - including the examples and seasonal wording added in `V10` - but there is no edit form in the browser yet, so an administrator correcting an entry has to delete and recreate it.
 - The frontend has no automated tests. CI type-checks and builds it; the 133 tests are all backend.
+- The admin schedule table lists every collection with no paging or date filter. That was fine when the calendar was a short hand-written seed; now that it extends itself to a rolling 180-day horizon the table is around sixty rows and will stay that length. It is usable, but it is the next thing that panel needs.
 - CORS allows a single hard-coded origin (`http://localhost:5173`). Deploying anywhere means making that configurable first.
 - Three things are implemented but have never run against the real service: live Anthropic API calls, the Lambda on AWS, and the API Gateway deployment. Everything about them was verified against local equivalents (a real S3 API, a real Kafka broker, a real MongoDB wire protocol), and that difference is recorded in `verification/photo-pipeline-results.md` rather than glossed over.
 - Push notifications are not implemented.
@@ -1081,7 +1089,6 @@ Current limitations:
 
 Short-term:
 
-- Add an edit form to the admin schedule and sorting item panels (the backend `PUT /{id}` endpoints already support it).
 - Make the allowed CORS origin configurable, as the first step towards deploying anything.
 
 Medium-term:

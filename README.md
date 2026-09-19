@@ -173,6 +173,18 @@ and `sorting_item_keyword` hold the three languages and their search terms, so
 an admin can add a material in FR/EN/ZH without a redeploy, and search matches
 whichever language the resident actually typed.
 
+**An edit form is where data quietly dies.** The admin console could create and
+delete, not correct. Adding the missing form was the easy half; the risk was
+that its model of a sorting item predated `V10`/`V11` and had three fields per
+language where the API has five. Loading three and sending three back would
+have blanked every card's examples and seasonal wording on the first edit —
+recreating, from the other direction, exactly the split those migrations
+existed to end. So the form carries all five, in all three languages, and the
+verification is about what *survives* an edit rather than what changes: nine
+examples, two keyword lists and an untouched Chinese translation, read back
+from the API after renaming a card in a real browser.
+[what was verified](docs/verification/admin-edit-results.md)
+
 **Integration tests boot the real thing.** `AuthenticationFlowIntegrationTest`
 starts the full Spring context against a real MySQL and drives it through
 MockMvc, exercising the actual filter chain. That is deliberate: the unit tests

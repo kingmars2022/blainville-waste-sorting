@@ -30,7 +30,17 @@ type CollectionEvent = {
   sourceUrl: string | null;
 };
 
-type Translation = { name: string; instruction: string; location: string | null };
+// availability and examples moved into the database in V10/V11. They are part
+// of the payload the API round-trips, so a form that does not carry them would
+// erase them on the first edit — which is exactly the split those migrations
+// existed to end.
+type Translation = {
+  name: string;
+  instruction: string;
+  location: string | null;
+  availability: string | null;
+  examples: string[];
+};
 
 type SortingItem = {
   id: number;
@@ -125,7 +135,7 @@ const summaryCards = computed(() => [
 
 // --- Notices -----------------------------------------------------------
 
-const noticeDraft = reactive({
+const emptyNoticeDraft = {
   startsOn: "",
   endsOn: "",
   titleFr: "",
@@ -133,8 +143,14 @@ const noticeDraft = reactive({
   titleZh: "",
   bodyFr: "",
   bodyEn: "",
-  bodyZh: ""
-});
+  bodyZh: "",
+  sourceUrl: "",
+  active: true
+};
+
+const noticeDraft = reactive({ ...emptyNoticeDraft });
+// null means "creating"; an id means the form is editing that row.
+const editingNoticeId = ref<number | null>(null);
 
 async function loadNotices() {
   try {
@@ -145,8 +161,8 @@ async function loadNotices() {
   }
 }
 
-async function createNotice() {
-  await api.post<Notice>("/admin/notices", {
+async function saveNotice() {
+  const payload = {
     startsOn: noticeDraft.startsOn,
     endsOn: noticeDraft.endsOn,
     titleFr: noticeDraft.titleFr,
@@ -155,22 +171,47 @@ async function createNotice() {
     bodyFr: noticeDraft.bodyFr,
     bodyEn: noticeDraft.bodyEn,
     bodyZh: noticeDraft.bodyZh,
-    sourceUrl: null,
-    active: true
-  });
+    sourceUrl: noticeDraft.sourceUrl || null,
+    active: noticeDraft.active
+  };
 
-  Object.assign(noticeDraft, {
-    startsOn: "",
-    endsOn: "",
-    titleFr: "",
-    titleEn: "",
-    titleZh: "",
-    bodyFr: "",
-    bodyEn: "",
-    bodyZh: ""
-  });
+  try {
+    if (editingNoticeId.value === null) {
+      await api.post<Notice>("/admin/notices", payload);
+    } else {
+      await api.put<Notice>(`/admin/notices/${editingNoticeId.value}`, payload);
+    }
+    noticeError.value = "";
+  } catch (err) {
+    // The API validates the date range, so a rejected edit has to say so
+    // rather than silently leaving the form as it was.
+    noticeError.value = err instanceof Error ? err.message : "Failed to save notice";
+    return;
+  }
 
+  cancelNoticeEdit();
   await loadNotices();
+}
+
+function startNoticeEdit(notice: Notice) {
+  editingNoticeId.value = notice.id;
+  Object.assign(noticeDraft, {
+    startsOn: notice.startsOn,
+    endsOn: notice.endsOn,
+    titleFr: notice.titleFr,
+    titleEn: notice.titleEn,
+    titleZh: notice.titleZh,
+    bodyFr: notice.bodyFr,
+    bodyEn: notice.bodyEn,
+    bodyZh: notice.bodyZh,
+    sourceUrl: notice.sourceUrl ?? "",
+    active: notice.active
+  });
+}
+
+function cancelNoticeEdit() {
+  editingNoticeId.value = null;
+  Object.assign(noticeDraft, emptyNoticeDraft);
 }
 
 async function deleteNotice(id: number) {
@@ -184,12 +225,19 @@ function noticeTitle(notice: Notice) {
 
 // --- Collection schedule -------------------------------------------------
 
-const eventDraft = reactive({
+const emptyEventDraft = {
   collectionDate: "",
   sector: "all",
   collectionType: "organic",
-  binColor: "brown"
-});
+  binColor: "brown",
+  noteFr: "",
+  noteEn: "",
+  noteZh: "",
+  sourceUrl: ""
+};
+
+const eventDraft = reactive({ ...emptyEventDraft });
+const editingEventId = ref<number | null>(null);
 
 async function loadEvents() {
   try {
@@ -200,20 +248,54 @@ async function loadEvents() {
   }
 }
 
-async function createEvent() {
-  await api.post<CollectionEvent>("/admin/collections", {
+async function saveEvent() {
+  const payload = {
     collectionDate: eventDraft.collectionDate,
     sector: eventDraft.sector,
     collectionType: eventDraft.collectionType,
     binColor: eventDraft.binColor,
-    noteFr: null,
-    noteEn: null,
-    noteZh: null,
-    sourceUrl: null
-  });
+    // The notes are carried through rather than blanked: the generated
+    // calendar rows have trilingual wording on them, and a date correction
+    // must not strip it.
+    noteFr: eventDraft.noteFr || null,
+    noteEn: eventDraft.noteEn || null,
+    noteZh: eventDraft.noteZh || null,
+    sourceUrl: eventDraft.sourceUrl || null
+  };
 
-  eventDraft.collectionDate = "";
+  try {
+    if (editingEventId.value === null) {
+      await api.post<CollectionEvent>("/admin/collections", payload);
+    } else {
+      await api.put<CollectionEvent>(`/admin/collections/${editingEventId.value}`, payload);
+    }
+    eventError.value = "";
+  } catch (err) {
+    eventError.value = err instanceof Error ? err.message : "Failed to save collection";
+    return;
+  }
+
+  cancelEventEdit();
   await loadEvents();
+}
+
+function startEventEdit(event: CollectionEvent) {
+  editingEventId.value = event.id;
+  Object.assign(eventDraft, {
+    collectionDate: event.collectionDate,
+    sector: event.sector,
+    collectionType: event.collectionType,
+    binColor: event.binColor,
+    noteFr: event.noteFr ?? "",
+    noteEn: event.noteEn ?? "",
+    noteZh: event.noteZh ?? "",
+    sourceUrl: event.sourceUrl ?? ""
+  });
+}
+
+function cancelEventEdit() {
+  editingEventId.value = null;
+  Object.assign(eventDraft, emptyEventDraft);
 }
 
 async function deleteEvent(id: number) {
@@ -223,7 +305,7 @@ async function deleteEvent(id: number) {
 
 // --- Sorting items ---------------------------------------------------------
 
-const sortingDraft = reactive({
+const emptySortingDraft = {
   destinationType: "organic",
   binColor: "brown",
   sourceUrl: "",
@@ -236,10 +318,19 @@ const sortingDraft = reactive({
   locationFr: "",
   locationEn: "",
   locationZh: "",
+  availabilityFr: "",
+  availabilityEn: "",
+  availabilityZh: "",
+  examplesFr: "",
+  examplesEn: "",
+  examplesZh: "",
   keywordsFr: "",
   keywordsEn: "",
   keywordsZh: ""
-});
+};
+
+const sortingDraft = reactive({ ...emptySortingDraft });
+const editingSortingId = ref<number | null>(null);
 
 async function loadSortingItems() {
   try {
@@ -250,43 +341,91 @@ async function loadSortingItems() {
   }
 }
 
-function splitKeywords(value: string) {
+/** Comma-separated input, for both keywords and the examples under a card. */
+function splitList(value: string) {
   return value
     .split(",")
     .map((keyword) => keyword.trim())
     .filter((keyword) => keyword.length > 0);
 }
 
-async function createSortingItem() {
-  await api.post<SortingItem>("/admin/sorting-items", {
+async function saveSortingItem() {
+  const payload = {
     destinationType: sortingDraft.destinationType,
     binColor: sortingDraft.binColor,
     sourceUrl: sortingDraft.sourceUrl || null,
-    fr: { name: sortingDraft.nameFr, instruction: sortingDraft.instructionFr, location: sortingDraft.locationFr || null },
-    en: { name: sortingDraft.nameEn, instruction: sortingDraft.instructionEn, location: sortingDraft.locationEn || null },
-    zh: { name: sortingDraft.nameZh, instruction: sortingDraft.instructionZh, location: sortingDraft.locationZh || null },
-    keywordsFr: splitKeywords(sortingDraft.keywordsFr),
-    keywordsEn: splitKeywords(sortingDraft.keywordsEn),
-    keywordsZh: splitKeywords(sortingDraft.keywordsZh)
-  });
+    fr: {
+      name: sortingDraft.nameFr,
+      instruction: sortingDraft.instructionFr,
+      location: sortingDraft.locationFr || null,
+      availability: sortingDraft.availabilityFr || null,
+      examples: splitList(sortingDraft.examplesFr)
+    },
+    en: {
+      name: sortingDraft.nameEn,
+      instruction: sortingDraft.instructionEn,
+      location: sortingDraft.locationEn || null,
+      availability: sortingDraft.availabilityEn || null,
+      examples: splitList(sortingDraft.examplesEn)
+    },
+    zh: {
+      name: sortingDraft.nameZh,
+      instruction: sortingDraft.instructionZh,
+      location: sortingDraft.locationZh || null,
+      availability: sortingDraft.availabilityZh || null,
+      examples: splitList(sortingDraft.examplesZh)
+    },
+    keywordsFr: splitList(sortingDraft.keywordsFr),
+    keywordsEn: splitList(sortingDraft.keywordsEn),
+    keywordsZh: splitList(sortingDraft.keywordsZh)
+  };
 
-  Object.assign(sortingDraft, {
-    sourceUrl: "",
-    nameFr: "",
-    nameEn: "",
-    nameZh: "",
-    instructionFr: "",
-    instructionEn: "",
-    instructionZh: "",
-    locationFr: "",
-    locationEn: "",
-    locationZh: "",
-    keywordsFr: "",
-    keywordsEn: "",
-    keywordsZh: ""
-  });
+  try {
+    if (editingSortingId.value === null) {
+      await api.post<SortingItem>("/admin/sorting-items", payload);
+    } else {
+      await api.put<SortingItem>(`/admin/sorting-items/${editingSortingId.value}`, payload);
+    }
+    sortingError.value = "";
+  } catch (err) {
+    sortingError.value = err instanceof Error ? err.message : "Failed to save sorting item";
+    return;
+  }
 
+  cancelSortingEdit();
   await loadSortingItems();
+}
+
+function startSortingEdit(item: SortingItem) {
+  editingSortingId.value = item.id;
+  Object.assign(sortingDraft, {
+    destinationType: item.destinationType,
+    binColor: item.binColor,
+    sourceUrl: item.sourceUrl ?? "",
+    nameFr: item.fr.name,
+    nameEn: item.en.name,
+    nameZh: item.zh.name,
+    instructionFr: item.fr.instruction,
+    instructionEn: item.en.instruction,
+    instructionZh: item.zh.instruction,
+    locationFr: item.fr.location ?? "",
+    locationEn: item.en.location ?? "",
+    locationZh: item.zh.location ?? "",
+    availabilityFr: item.fr.availability ?? "",
+    availabilityEn: item.en.availability ?? "",
+    availabilityZh: item.zh.availability ?? "",
+    examplesFr: (item.fr.examples ?? []).join(", "),
+    examplesEn: (item.en.examples ?? []).join(", "),
+    examplesZh: (item.zh.examples ?? []).join(", "),
+    keywordsFr: item.keywordsFr.join(", "),
+    keywordsEn: item.keywordsEn.join(", "),
+    keywordsZh: item.keywordsZh.join(", ")
+  });
+}
+
+function cancelSortingEdit() {
+  editingSortingId.value = null;
+  Object.assign(sortingDraft, emptySortingDraft);
 }
 
 async function deleteSortingItem(id: number) {
@@ -397,7 +536,11 @@ onMounted(() => {
 
         <p v-if="eventError" class="auth-error">{{ eventError }}</p>
 
-        <form class="admin-form-grid" @submit.prevent="createEvent">
+        <p v-if="editingEventId !== null" class="admin-note">
+          {{ t("admin.editing") }} #{{ editingEventId }}
+        </p>
+
+        <form class="admin-form-grid" @submit.prevent="saveEvent">
           <label>
             {{ t("admin.date") }}
             <input v-model="eventDraft.collectionDate" type="date" required />
@@ -430,7 +573,30 @@ onMounted(() => {
               <option value="none">none</option>
             </select>
           </label>
-          <button type="submit">{{ t("admin.addEvent") }}</button>
+          <label>
+            {{ t("admin.sourceUrl") }}
+            <input v-model="eventDraft.sourceUrl" type="url" />
+          </label>
+          <label>
+            {{ t("admin.noticeBody") }} (FR)
+            <input v-model="eventDraft.noteFr" type="text" />
+          </label>
+          <label>
+            {{ t("admin.noticeBody") }} (EN)
+            <input v-model="eventDraft.noteEn" type="text" />
+          </label>
+          <label>
+            {{ t("admin.noticeBody") }} (ZH)
+            <input v-model="eventDraft.noteZh" type="text" />
+          </label>
+          <div class="admin-form-actions">
+            <button type="submit">
+              {{ editingEventId === null ? t("admin.addEvent") : t("admin.save") }}
+            </button>
+            <button v-if="editingEventId !== null" type="button" @click="cancelEventEdit">
+              {{ t("admin.cancel") }}
+            </button>
+          </div>
         </form>
 
         <table class="admin-table" v-if="events.length">
@@ -449,7 +615,8 @@ onMounted(() => {
               <td>{{ event.sector }}</td>
               <td>{{ event.collectionType }}</td>
               <td>{{ event.binColor }}</td>
-              <td>
+              <td class="admin-row-actions">
+                <button type="button" @click="startEventEdit(event)">{{ t("admin.edit") }}</button>
                 <button type="button" @click="deleteEvent(event.id)">{{ t("admin.delete") }}</button>
               </td>
             </tr>
@@ -465,7 +632,11 @@ onMounted(() => {
 
         <p v-if="sortingError" class="auth-error">{{ sortingError }}</p>
 
-        <form class="admin-form-grid" @submit.prevent="createSortingItem">
+        <p v-if="editingSortingId !== null" class="admin-note">
+          {{ t("admin.editing") }} #{{ editingSortingId }}
+        </p>
+
+        <form class="admin-form-grid" @submit.prevent="saveSortingItem">
           <label>
             {{ t("admin.type") }}
             <select v-model="sortingDraft.destinationType">
@@ -504,6 +675,14 @@ onMounted(() => {
             <input v-model="sortingDraft.locationFr" type="text" />
           </label>
           <label>
+            {{ t("admin.availability") }} (FR)
+            <input v-model="sortingDraft.availabilityFr" type="text" />
+          </label>
+          <label>
+            {{ t("admin.examples") }} (FR)
+            <input v-model="sortingDraft.examplesFr" type="text" />
+          </label>
+          <label>
             {{ t("admin.keywords") }} (FR)
             <input v-model="sortingDraft.keywordsFr" type="text" />
           </label>
@@ -519,6 +698,14 @@ onMounted(() => {
           <label>
             {{ t("admin.location") }} (EN)
             <input v-model="sortingDraft.locationEn" type="text" />
+          </label>
+          <label>
+            {{ t("admin.availability") }} (EN)
+            <input v-model="sortingDraft.availabilityEn" type="text" />
+          </label>
+          <label>
+            {{ t("admin.examples") }} (EN)
+            <input v-model="sortingDraft.examplesEn" type="text" />
           </label>
           <label>
             {{ t("admin.keywords") }} (EN)
@@ -538,11 +725,26 @@ onMounted(() => {
             <input v-model="sortingDraft.locationZh" type="text" />
           </label>
           <label>
+            {{ t("admin.availability") }} (ZH)
+            <input v-model="sortingDraft.availabilityZh" type="text" />
+          </label>
+          <label>
+            {{ t("admin.examples") }} (ZH)
+            <input v-model="sortingDraft.examplesZh" type="text" />
+          </label>
+          <label>
             {{ t("admin.keywords") }} (ZH)
             <input v-model="sortingDraft.keywordsZh" type="text" />
           </label>
 
-          <button type="submit">{{ t("admin.addItem") }}</button>
+          <div class="admin-form-actions">
+            <button type="submit">
+              {{ editingSortingId === null ? t("admin.addItem") : t("admin.save") }}
+            </button>
+            <button v-if="editingSortingId !== null" type="button" @click="cancelSortingEdit">
+              {{ t("admin.cancel") }}
+            </button>
+          </div>
         </form>
 
         <table class="admin-table" v-if="sortingItems.length">
@@ -559,7 +761,8 @@ onMounted(() => {
               <td>{{ item.destinationType }}</td>
               <td>{{ item.binColor }}</td>
               <td>{{ sortingName(item) }}</td>
-              <td>
+              <td class="admin-row-actions">
+                <button type="button" @click="startSortingEdit(item)">{{ t("admin.edit") }}</button>
                 <button type="button" @click="deleteSortingItem(item.id)">{{ t("admin.delete") }}</button>
               </td>
             </tr>
@@ -584,7 +787,11 @@ onMounted(() => {
 
         <p v-if="noticeError" class="auth-error">{{ noticeError }}</p>
 
-        <form class="admin-form-grid" @submit.prevent="createNotice">
+        <p v-if="editingNoticeId !== null" class="admin-note">
+          {{ t("admin.editing") }} #{{ editingNoticeId }}
+        </p>
+
+        <form class="admin-form-grid" @submit.prevent="saveNotice">
           <label>
             {{ t("admin.startsOn") }}
             <input v-model="noticeDraft.startsOn" type="date" required />
@@ -617,7 +824,22 @@ onMounted(() => {
             {{ t("admin.noticeBody") }} (ZH)
             <textarea v-model="noticeDraft.bodyZh" rows="2" required></textarea>
           </label>
-          <button type="submit">{{ t("admin.publishNotice") }}</button>
+          <label>
+            {{ t("admin.sourceUrl") }}
+            <input v-model="noticeDraft.sourceUrl" type="url" />
+          </label>
+          <label class="admin-checkbox">
+            <input v-model="noticeDraft.active" type="checkbox" />
+            {{ t("admin.active") }}
+          </label>
+          <div class="admin-form-actions">
+            <button type="submit">
+              {{ editingNoticeId === null ? t("admin.publishNotice") : t("admin.save") }}
+            </button>
+            <button v-if="editingNoticeId !== null" type="button" @click="cancelNoticeEdit">
+              {{ t("admin.cancel") }}
+            </button>
+          </div>
         </form>
 
         <table class="admin-table" v-if="notices.length">
@@ -634,7 +856,8 @@ onMounted(() => {
               <td>{{ notice.startsOn }}</td>
               <td>{{ notice.endsOn }}</td>
               <td>{{ noticeTitle(notice) }}</td>
-              <td>
+              <td class="admin-row-actions">
+                <button type="button" @click="startNoticeEdit(notice)">{{ t("admin.edit") }}</button>
                 <button type="button" @click="deleteNotice(notice.id)">{{ t("admin.delete") }}</button>
               </td>
             </tr>

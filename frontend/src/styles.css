@@ -347,6 +347,38 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+/*
+  The submit and cancel buttons sit together on a row of their own rather than
+  in a grid cell, so the cancel button is never the widest thing in the form
+  and an administrator cannot mistake it for the primary action.
+*/
+.admin-form-actions {
+  display: flex;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.admin-form-actions button {
+  flex: 0 0 auto;
+}
+
+/* `label` is a grid by default here; a checkbox reads better beside its text. */
+.admin-checkbox {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.admin-checkbox input {
+  width: auto;
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .admin-table {
   border-collapse: collapse;
   margin-top: 18px;
