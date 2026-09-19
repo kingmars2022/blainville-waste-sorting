@@ -20,4 +20,11 @@ public interface AnswerComposer {
      * @param context guaranteed non-empty; the refusal path never reaches here
      */
     String compose(AssistantQuestion question, List<RetrievedItem> context);
+
+    default Composition composeWithMetadata(AssistantQuestion question, List<RetrievedItem> context) {
+        return new Composition(compose(question, context), providerName());
+    }
+
+    record Composition(String text, String provider) {
+    }
 }

@@ -47,14 +47,15 @@ public class AssistantService {
             return new AssistantAnswer(
                     NO_ANSWER.get(question.language()),
                     false,
-                    composer.providerName(),
+                    "template",
                     List.of());
         }
 
+        AnswerComposer.Composition composition = composer.composeWithMetadata(question, context);
         return new AssistantAnswer(
-                composer.compose(question, context),
+                composition.text(),
                 true,
-                composer.providerName(),
+                composition.provider(),
                 context.stream().map(AssistantService::toSource).toList());
     }
 

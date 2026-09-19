@@ -12,7 +12,7 @@ flowchart LR
     A -->|"cache-aside + rate limit"| R[("Redis")]
     A -->|"retrieval only"| AI["Sorting assistant<br/>RAG, FR/EN/ZH"]
     A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
-    FW["Flyway V1-V6"] -.->|"migrates on startup"| D
+    FW["Flyway V1-V7"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
 ```
 
@@ -20,7 +20,7 @@ flowchart LR
 |---|---|
 | Frontend | Vue 3, TypeScript, Pinia, Vite |
 | API | Spring Boot, Java 21 |
-| Persistence | MyBatis, MySQL (7 tables), Flyway (6 migrations) |
+| Persistence | MyBatis, MySQL (7 tables), Flyway (7 migrations) |
 | Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
 | Assistant | Retrieval-augmented Q&A over MySQL full-text; Claude optional |
 | Auth | Spring Security, JWT (HMAC), BCrypt |
@@ -53,16 +53,16 @@ costs 0.01s instead of 4.0s.
 [`config/CacheConfig.java`](backend/src/main/java/com/bienvenueblainville/config/CacheConfig.java),
 [measurements](docs/verification/redis-cache-results.md)
 
-**The sorting assistant refuses when it doesn't know.** Residents ask in
-their own words, in any of the three languages, and the answer is retrieved
-from the municipal guide in MySQL — never generated from a model's memory.
-Grounding is enforced above the model: no retrieved context, no model call at
-all. Getting there needed two full-text parsers (ngram is the only one that
-can tokenize Chinese, and the only one loose enough to make a French refusal
-impossible) and an application-side stopword list (InnoDB's is English-only,
-so a stray `est` once made it answer a question about the mayor's phone number
-with bin advice). Scored over 18 questions: precision@1 12/12, refusal 6/6.
-Claude is optional — the default composer needs no API key and costs nothing.
+**The sorting assistant skips generation when retrieval returns no entries.**
+It searches the MySQL guide using word indexes for French/English and ngram
+indexes for Chinese. The default template quotes the retrieved entry; the
+optional Claude composer generates wording with those entries as context.
+Nonempty retrieval does not prove relevance or guarantee factual output. The
+relative score cutoff always retains the top positive match, even when it is
+incidental. `grounded=true` means context was supplied, not that the answer
+was independently verified. The recorded 12/12 retrieval and 6/6 refusal
+results describe a small development set used while tuning the implementation,
+not a held-out accuracy estimate. Claude's live API path remains unverified.
 [`assistant/`](backend/src/main/java/com/bienvenueblainville/assistant),
 [measurements](docs/verification/assistant-results.md)
 
@@ -130,7 +130,8 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-49 tests: 30 unit, 19 integration.
+53 tests: 34 unit, 19 integration. The September 19 review reran the 34 unit
+tests on Java 21; the integration results below were recorded previously.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -146,12 +147,18 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `SortingGuideRetrieverTest` | 4 | relevance cutoff, parser selection, empty-query short circuit |
 | `AssistantServiceTest` | 3 | the refusal rule: no context means no model call |
 | `TemplateAnswerComposerTest` | 3 | trilingual answer wording |
+| `AssistantRateLimiterTest` | 3 | quota boundary, missing counter, Redis failure |
+| `ClaudeAnswerComposerTest` | 1 | template provider attribution after API failure |
 
 Unit tests need nothing but the JVM:
 
 ```bash
 cd backend && mvn test
 ```
+
+Use Java 21, as in CI and Docker. On macOS, select it with
+`export JAVA_HOME=$(/usr/libexec/java_home -v 21)` before running Maven.
+The current Mockito dependency does not support the locally installed Java 25.
 
 Integration tests are opt-in locally because they need a database and a Redis
 (CI always runs them). With the default `.env.example` values copied into
@@ -168,12 +175,32 @@ cd backend && mvn test -Pintegration-test
 ```bash
 cp .env.example .env          # set DB_URL, DB_USERNAME, DB_PASSWORD,
                               # APP_JWT_SECRET, APP_ADMIN_EMAIL, APP_ADMIN_PASSWORD
-docker compose up -d          # MySQL + Redis + backend; Flyway migrates V1-V6 on startup
-                              # (CACHE_TYPE=none runs the whole stack without Redis)
+docker compose up -d --build  # MySQL + Redis + backend; Flyway migrates V1-V7
 cd frontend && npm ci && npm run dev
 ```
 
 Frontend on `http://localhost:5173`, API on `http://localhost:8080`.
+
+`CACHE_TYPE=none` disables read caching only. The assistant still requires
+Redis for its quota and returns 503 when Redis is unavailable, including in
+template mode. Compose still starts Redis with caching disabled.
+
+The quota uses an atomic Redis script and UTC hourly windows. The shared Redis
+uses `noeviction` so memory pressure cannot evict quota counters; failed cache
+writes fall through while failed quota checks reject assistant requests.
+Persistence is disabled locally, so restarting Redis resets quotas. Per-IP
+quotas are an abuse deterrent, not a global spending limit: multiple IPs and
+hour boundaries can increase usage. Set provider-side spending controls before
+exposing the paid provider publicly, and configure trusted proxy handling for
+the deployment. API calls have a 15-second timeout and no automatic retries;
+fallback responses are labelled `template`.
+
+The resident sorting cards currently come from `frontend/src/data/sortingGuide.ts`,
+while the assistant and admin endpoints use MySQL. Admin changes therefore do
+not update those static cards. Unifying these data sources is outstanding work.
+
+See [the September 19 review](docs/review-2026-09-19.md) for fixes, remaining
+limitations, and the assessment of proposed infrastructure additions.
 
 ## More detail
 

@@ -29,7 +29,6 @@ class AssistantServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        when(composer.providerName()).thenReturn("template");
         service = new AssistantService(retriever, composer);
     }
 
@@ -46,6 +45,8 @@ class AssistantServiceTest {
                 new AssistantRequest("Comment réparer ma voiture ?", LanguageCode.fr));
 
         verify(composer, never()).compose(any(), any());
+        verify(composer, never()).composeWithMetadata(any(), any());
+        assertThat(answer.provider()).isEqualTo("template");
         assertThat(answer.grounded()).isFalse();
         assertThat(answer.sources()).isEmpty();
         assertThat(answer.answer()).contains("blainville.ca");
@@ -67,12 +68,14 @@ class AssistantServiceTest {
                 new RetrievedItem(7L, LanguageCode.fr, "Papiers et cartons souilles",
                         "Dans le bac brun.", null, DestinationType.organic, BinColor.brown,
                         "https://blainville.ca/tri", 8.8954321)));
-        when(composer.compose(any(), any())).thenReturn("Bac brun.");
+        when(composer.composeWithMetadata(any(), any()))
+                .thenReturn(new AnswerComposer.Composition("Bac brun.", "template"));
 
         AssistantAnswer answer = service.ask(
                 new AssistantRequest("boîte à pizza", LanguageCode.fr));
 
         assertThat(answer.grounded()).isTrue();
+        assertThat(answer.provider()).isEqualTo("template");
         assertThat(answer.answer()).isEqualTo("Bac brun.");
         assertThat(answer.sources()).singleElement().satisfies(source -> {
             assertThat(source.itemId()).isEqualTo(7L);

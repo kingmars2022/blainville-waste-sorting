@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import java.time.Duration;
 
 @Configuration
 @EnableConfigurationProperties(AssistantProperties.class)
@@ -38,7 +39,8 @@ public class AssistantConfig {
             return template;
         }
 
-        AnthropicClient client = AnthropicOkHttpClient.builder().apiKey(apiKey).build();
+        AnthropicClient client = AnthropicOkHttpClient.builder().apiKey(apiKey)
+                .timeout(Duration.ofSeconds(15)).maxRetries(0).build();
         log.info("Assistant provider: Claude ({})", properties.model());
         return new ClaudeAnswerComposer(client, properties.model(), template);
     }

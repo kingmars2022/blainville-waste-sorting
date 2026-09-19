@@ -4,12 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
-import java.time.Duration;
+import java.util.List;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -33,6 +34,13 @@ import java.time.format.DateTimeFormatter;
 public class AssistantRateLimiter {
     private static final Logger log = LoggerFactory.getLogger(AssistantRateLimiter.class);
     private static final DateTimeFormatter HOUR = DateTimeFormatter.ofPattern("yyyyMMdd'T'HH");
+    private static final DefaultRedisScript<Long> INCREMENT = new DefaultRedisScript<>("""
+            local count = redis.call('INCR', KEYS[1])
+            if redis.call('TTL', KEYS[1]) < 0 then
+                redis.call('EXPIRE', KEYS[1], 7200)
+            end
+            return count
+            """, Long.class);
 
     private final StringRedisTemplate redis;
     private final Clock clock;
@@ -42,7 +50,7 @@ public class AssistantRateLimiter {
     // The package-private one below exists for tests to inject a fixed Clock.
     @Autowired
     public AssistantRateLimiter(StringRedisTemplate redis, AssistantProperties properties) {
-        this(redis, Clock.systemDefaultZone(), properties.rateLimit().requestsPerHour());
+        this(redis, Clock.systemUTC(), properties.rateLimit().requestsPerHour());
     }
 
     AssistantRateLimiter(StringRedisTemplate redis, Clock clock, int requestsPerHour) {
@@ -56,17 +64,15 @@ public class AssistantRateLimiter {
      *                                 the quota cannot be counted at all
      */
     public void check(String clientId) {
-        // A fixed hourly window, not a sliding one: INCR + EXPIRE is atomic
-        // enough for a cost cap, costs one round trip, and cannot leak memory.
-        // Worst case a caller gets 2x the quota across a window boundary,
-        // which does not matter for what this is protecting.
+        // One script installs the counter and expiry atomically. UTC avoids
+        // local daylight-saving changes repeating or skipping an hourly key.
         String key = "assistant:ratelimit:" + LocalDateTime.now(clock).format(HOUR) + ":" + clientId;
 
         Long count;
         try {
-            count = redis.opsForValue().increment(key);
-            if (count != null && count == 1L) {
-                redis.expire(key, Duration.ofHours(2));
+            count = redis.execute(INCREMENT, List.of(key));
+            if (count == null || count < 1L) {
+                throw new IllegalStateException("Redis returned no valid quota counter");
             }
         } catch (RuntimeException e) {
             log.error("Assistant rate limit cannot be counted; refusing the request rather than "
@@ -75,7 +81,7 @@ public class AssistantRateLimiter {
                     "The assistant is temporarily unavailable. The rest of the sorting guide still works.");
         }
 
-        if (count != null && count > requestsPerHour) {
+        if (count > requestsPerHour) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "Too many assistant questions from this address. Try again within the hour.");
         }

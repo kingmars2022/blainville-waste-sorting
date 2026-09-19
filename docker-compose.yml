@@ -23,9 +23,9 @@ services:
     image: redis:7-alpine
     container_name: bienvenue-blainville-redis
     restart: unless-stopped
-    # maxmemory + LRU: the cache must never be the thing that runs the host
-    # out of memory. Entries here are all rebuildable from MySQL.
-    command: ["redis-server", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    # Quota counters share this instance with caches: never evict counters.
+    # At capacity, cache writes fail open and assistant quotas fail closed.
+    command: ["redis-server", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -68,4 +68,3 @@ services:
 
 volumes:
   mysql_data:
-
