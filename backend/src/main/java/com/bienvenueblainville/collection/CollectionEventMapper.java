@@ -23,6 +23,9 @@ public interface CollectionEventMapper {
 
     void insert(Map<String, Object> params);
 
+    /** Bulk insert for generated occurrences; see CollectionCalendarTopUp. */
+    void insertGenerated(@Param("events") List<CollectionEvent> events);
+
     void update(
             @Param("id") Long id,
             @Param("collectionDate") LocalDate collectionDate,

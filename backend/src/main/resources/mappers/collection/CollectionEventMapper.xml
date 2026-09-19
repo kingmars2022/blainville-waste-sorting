@@ -31,6 +31,17 @@
         values (#{collectionDate}, #{sector}, #{collectionType}, #{binColor}, #{noteFr}, #{noteEn}, #{noteZh}, #{sourceUrl})
     </insert>
 
+    <insert id="insertGenerated">
+        insert into collection_event (collection_date, sector, collection_type, bin_color, note_fr, note_en, note_zh, source_url)
+        values
+        <foreach collection="events" item="event" separator=",">
+            (#{event.collectionDate}, #{event.sector}, #{event.collectionType}, #{event.binColor},
+             #{event.noteFr}, #{event.noteEn}, #{event.noteZh}, #{event.sourceUrl})
+        </foreach>
+        <!-- Repeatable by design: see the unique key added in V12. -->
+        on duplicate key update collection_event.id = collection_event.id
+    </insert>
+
     <update id="update">
         update collection_event
         set collection_date = #{collectionDate},

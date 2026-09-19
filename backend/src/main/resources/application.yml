@@ -105,6 +105,14 @@ app:
     upload-ttl: ${PHOTO_UPLOAD_TTL:300}
     max-upload-bytes: ${PHOTO_MAX_BYTES:10000000}
   collection:
+    calendar:
+      # The recurring collections are stored as patterns, not as rows with an
+      # end date, and materialized out to this horizon on startup and daily.
+      # Turning this off freezes the calendar at whatever is already in the
+      # database - which is what the old hand-written seed did by accident.
+      enabled: ${COLLECTION_CALENDAR_TOP_UP:true}
+      horizon-days: ${COLLECTION_CALENDAR_HORIZON_DAYS:180}
+      interval-ms: ${COLLECTION_CALENDAR_INTERVAL_MS:86400000}
     put-out-after: "20:00"
     put-out-before: "06:00"
     bring-back-before: "20:00"

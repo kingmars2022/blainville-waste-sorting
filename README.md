@@ -247,7 +247,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-123 tests: 64 unit, 59 integration.
+133 tests: 70 unit, 63 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -255,6 +255,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `JwtServiceTest` | 3 | token issue, parse, rejection |
 | `SortingItemServiceTest` | 5 | multilingual search and keyword matching |
 | `CollectionServiceTest` | 3 | sector schedule and bin colour resolution |
+| `CollectionCalendarTopUpTest` | 6 | rolling generation, the high-water mark, gaps, biweekly phase |
 | `SpecialNoticeServiceTest` | 3 | notice visibility |
 | `AuthenticationFlowIntegrationTest` | 7 | full context, real MySQL, real filter chain |
 | `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
@@ -265,6 +266,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `PhotoProcessorTest` | 5 | EXIF GPS stripped, including when no resize is needed |
 | `PhotoSortingServiceTest` | 6 | the model names, the guide decides; refusal when the guide has no entry |
 | `SortingGuideIntegrationTest` | 6 | one source of truth: examples, ordering, seasonal wording, the merged duplicate |
+| `CollectionCalendarIntegrationTest` | 4 | the calendar a year out, repeat runs, and a cancellation that stays cancelled |
 | `ResidentQueryInsightsIntegrationTest` | 5 | question → Kafka → MongoDB → gap report, and no resident identified |
 | `QueryEventPublisherTest` | 4 | the events gate, and both failure modes kept apart |
 | `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
