@@ -207,6 +207,24 @@ mvn test                    57/57 passing (unit, no infrastructure)
 mvn test -Pintegration-test 102/102 passing (57 unit + 45 integration)
 ```
 
+## A bug this suite hid from itself
+
+The first CI run of this suite failed where every local run had passed, and
+the reason was the test S3 server rather than the code under test. S3Mock is
+itself a Spring Boot application, so starting it runs Spring Boot's
+auto-configuration against this project's classpath: it built the
+application's MySQL DataSource and ran Flyway against whatever
+`application.yml` pointed at. On a developer machine whose MySQL accepts
+those credentials that is invisible — it quietly migrates the dev database
+from a test run. In CI, where the test user is granted only the test
+database, it failed the context and took all seven tests with it.
+
+The fix is one property on the S3 server (`spring.autoconfigure.exclude` for
+the JDBC and Flyway auto-configuration; MyBatis backs off on its own once
+there is no DataSource bean). `LocalS3Test` now guards it, deliberately
+untagged so it runs in the plain `mvn test` profile where no database exists
+at all — the cheapest possible reproduction of what CI saw.
+
 ## Deploying it for real
 
 ```bash
