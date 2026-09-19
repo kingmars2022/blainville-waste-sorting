@@ -1,6 +1,9 @@
 package com.bienvenueblainville.notice;
 
+import com.bienvenueblainville.config.CacheConfig;
 import com.bienvenueblainville.notice.dto.NoticeRequest;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,14 +24,30 @@ public class SpecialNoticeService {
         this.clock = Clock.systemDefaultZone();
     }
 
+    /**
+     * Read on every page load alongside the collection schedule. Cached by
+     * day for the same reason {@code CollectionService.upcoming} is: the
+     * query is "what is visible today", so the day has to be part of the key
+     * or a notice would stay visible past its {@code endsOn} date.
+     */
+    @Cacheable(cacheNames = CacheConfig.ACTIVE_NOTICES, key = "#root.target.today().toString()")
     public List<SpecialNotice> active() {
-        return mapper.findActive(LocalDate.now(clock));
+        return mapper.findActive(today());
+    }
+
+    /** Exposed so the cache key above can depend on the same clock this service reads. */
+    public LocalDate today() {
+        return LocalDate.now(clock);
     }
 
     public List<SpecialNotice> all() {
         return mapper.findAll();
     }
 
+    // A notice publish is the one write residents notice immediately (a
+    // cancelled collection, a storm delay), so it evicts rather than waiting
+    // out the TTL.
+    @CacheEvict(cacheNames = CacheConfig.ACTIVE_NOTICES, allEntries = true)
     public SpecialNotice create(NoticeRequest request) {
         requireValidDateRange(request);
 
@@ -49,6 +68,7 @@ public class SpecialNoticeService {
         return mapper.findById(generatedId).orElseThrow();
     }
 
+    @CacheEvict(cacheNames = CacheConfig.ACTIVE_NOTICES, allEntries = true)
     public SpecialNotice update(Long id, NoticeRequest request) {
         requireExists(id);
         requireValidDateRange(request);
@@ -56,6 +76,7 @@ public class SpecialNoticeService {
         return mapper.findById(id).orElseThrow();
     }
 
+    @CacheEvict(cacheNames = CacheConfig.ACTIVE_NOTICES, allEntries = true)
     public void delete(Long id) {
         requireExists(id);
         mapper.delete(id);

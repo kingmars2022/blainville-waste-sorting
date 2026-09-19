@@ -9,6 +9,7 @@ the sorting guide and public notices.
 flowchart LR
     V["Vue 3 console<br/>FR / EN / ZH"] -->|"Bearer JWT"| F["JwtAuthenticationFilter"]
     F --> A["Spring Boot<br/>7 controllers"]
+    A -->|"cache-aside"| R[("Redis<br/>hot reads")]
     A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
     FW["Flyway V1-V6"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
@@ -19,6 +20,7 @@ flowchart LR
 | Frontend | Vue 3, TypeScript, Pinia, Vite |
 | API | Spring Boot, Java 21 |
 | Persistence | MyBatis, MySQL (7 tables), Flyway (6 migrations) |
+| Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
 | Auth | Spring Security, JWT (HMAC), BCrypt |
 | Delivery | Docker Compose, GitHub Actions |
 
@@ -35,6 +37,19 @@ variables, so no one can promote themselves by posting the right JSON.
 401 from `HttpStatusEntryPoint`; an authenticated request without the ADMIN
 role gets 403 from `AccessDeniedHandlerImpl`. Getting this backwards is easy
 and it is exactly the kind of thing the integration suite pins down.
+
+**Redis caches the two reads every page load makes, and the site survives
+losing it.** `@Cacheable` fronts the collection schedule and the active
+notices; admin writes evict immediately rather than waiting out the TTL. The
+cache keys include today's date, because both queries mean "as of today" and
+would otherwise serve yesterday's collection after midnight. A `CacheErrorHandler`
+turns every Redis failure into a log line and a fall-through to MySQL, and
+Lettuce is configured to reject commands while disconnected — without that,
+a dead Redis still returned correct data but took 4 seconds per request.
+Measured: 603 MySQL `SELECT`s become 1, and killing `redis-server` mid-run
+costs 0.01s instead of 4.0s.
+[`config/CacheConfig.java`](backend/src/main/java/com/bienvenueblainville/config/CacheConfig.java),
+[measurements](docs/verification/redis-cache-results.md)
 
 **Translation is a table, not a resource bundle.** `sorting_item_translation`
 and `sorting_item_keyword` hold the three languages and their search terms, so
@@ -61,6 +76,12 @@ on every write, and a 401/403 mix-up that would have silently broken
 session-expiry handling in the browser. Full transcripts:
 [`docs/verification/verification-log.md`](docs/verification/verification-log.md).
 
+The same approach is how the Redis cache was validated: not "it compiles",
+but 603 MySQL queries dropping to 1, and `redis-cli SHUTDOWN` under a live
+server to see what actually happens — which is what turned up a 4-second
+degraded response time that no test was asserting on.
+[`docs/verification/redis-cache-results.md`](docs/verification/redis-cache-results.md).
+
 It also holds up under concurrent load: 50, 100, and 200 simulated residents
 registering and loading the home page at once, against the real backend and a
 real MySQL instance — 100% success at every level tested, zero failed
@@ -84,7 +105,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-21 tests: 14 unit, 7 integration.
+26 tests: 14 unit, 12 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -94,6 +115,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `CollectionServiceTest` | 3 | sector schedule and bin colour resolution |
 | `SpecialNoticeServiceTest` | 1 | notice visibility |
 | `AuthenticationFlowIntegrationTest` | 7 | full context, real MySQL, real filter chain |
+| `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
 
 Unit tests need nothing but the JVM:
 
@@ -101,11 +123,11 @@ Unit tests need nothing but the JVM:
 cd backend && mvn test
 ```
 
-Integration tests are opt-in locally because they need a database (CI always
-runs them):
+Integration tests are opt-in locally because they need a database and a Redis
+(CI always runs them):
 
 ```bash
-docker compose up -d mysql
+docker compose up -d mysql redis
 cd backend && mvn test -Pintegration-test
 ```
 
@@ -114,7 +136,8 @@ cd backend && mvn test -Pintegration-test
 ```bash
 cp .env.example .env          # set DB_URL, DB_USERNAME, DB_PASSWORD,
                               # APP_JWT_SECRET, APP_ADMIN_EMAIL, APP_ADMIN_PASSWORD
-docker compose up -d          # MySQL + backend; Flyway migrates V1-V6 on startup
+docker compose up -d          # MySQL + Redis + backend; Flyway migrates V1-V6 on startup
+                              # (CACHE_TYPE=none runs the whole stack without Redis)
 cd frontend && npm ci && npm run dev
 ```
 

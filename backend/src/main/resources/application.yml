@@ -8,6 +8,22 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  # Redis is a read cache in front of the two hot public endpoints, never a
+  # source of truth. Set CACHE_TYPE=none to run the whole app without Redis;
+  # if Redis is configured but unreachable the app still serves every request
+  # (see CacheConfig's error handler), just without the cache.
+  cache:
+    type: ${CACHE_TYPE:redis}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Deliberately short: a hung Redis must cost a request milliseconds,
+      # not the 60s Lettuce would wait by default. CacheConfig additionally
+      # rejects commands outright while the connection is down, so a dead
+      # Redis does not even pay this timeout.
+      connect-timeout: 500ms
+      timeout: 500ms
 
 mybatis:
   mapper-locations: classpath:mappers/**/*.xml

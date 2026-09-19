@@ -19,6 +19,21 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: bienvenue-blainville-redis
+    restart: unless-stopped
+    # maxmemory + LRU: the cache must never be the thing that runs the host
+    # out of memory. Entries here are all rebuildable from MySQL.
+    command: ["redis-server", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -27,6 +42,10 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      # started, not healthy: the app boots and serves fine without Redis,
+      # so a slow cache must not hold up the API.
+      redis:
+        condition: service_started
     environment:
       DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-bienvenue_blainville}?useUnicode=true&characterEncoding=utf8&serverTimezone=America/Toronto&allowPublicKeyRetrieval=true&useSSL=false
       DB_USERNAME: ${DB_USERNAME:-blainville_app}
@@ -34,6 +53,9 @@ services:
       APP_JWT_SECRET: ${APP_JWT_SECRET:?Set APP_JWT_SECRET in .env}
       APP_ADMIN_EMAIL: ${APP_ADMIN_EMAIL:-admin@blainville.local}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?Set APP_ADMIN_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_TYPE: ${CACHE_TYPE:-redis}
       TZ: America/Toronto
     ports:
       - "${BACKEND_PORT:-8080}:8080"

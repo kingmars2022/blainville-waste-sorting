@@ -246,6 +246,10 @@ The backend `PUT /{id}` endpoints for schedule and sorting items work, but the a
 
 - MySQL
 
+### Caching
+
+- Redis 7 (via Spring Cache / Lettuce)
+
 ### DevOps and Tooling
 
 - Docker
@@ -313,6 +317,14 @@ MySQL is sufficient for the project's relational data model and is easy to use w
 ### Why Flyway
 
 Flyway makes the database reproducible. Schema changes and seed data are tracked as versioned migrations, so a fresh database can be initialized consistently in local development or Docker.
+
+### Why Redis
+
+The two reads on the critical path of every page load — the upcoming collection schedule and the active notices — are the same answer for every resident in a sector on a given day, and they only change when an administrator edits them. That is the exact shape a cache-aside layer fits: high read volume, low write volume, and a tolerable staleness window bounded by an explicit eviction on write.
+
+Redis rather than an in-process cache (Caffeine) because the interesting property is that the cache is *shared*: two backend instances behind a load balancer see the same cached schedule and the same eviction, so an admin edit is visible everywhere immediately rather than on each instance's own TTL. That matters more here than raw lookup speed.
+
+The cache is deliberately optional. It is a read cache in front of MySQL, never a source of truth, so the design constraint was that losing Redis must degrade the site to "slower", not to "down". `CACHE_TYPE=none` runs the entire stack without Redis at all. See [`verification/redis-cache-results.md`](verification/redis-cache-results.md) for what this bought (603 MySQL `SELECT`s → 1 across 300 concurrent page loads) and what it cost when Redis was deliberately killed mid-run.
 
 ### Why Docker Compose
 
@@ -388,7 +400,7 @@ The admin UI itself currently exposes create/list/delete for schedule and sortin
 
 The project uses a hybrid development strategy:
 
-- Docker Compose runs MySQL and the Spring Boot backend.
+- Docker Compose runs MySQL, Redis, and the Spring Boot backend.
 - The Vue frontend runs locally with Vite.
 
 This keeps the backend environment reproducible without slowing down frontend development.
@@ -401,14 +413,21 @@ mysql
   Exposes container port 3306 on host port 3307 by default.
   Stores data in a named Docker volume.
 
+redis
+  Redis 7 cache container.
+  Exposes container port 6379 on host port 6379 by default.
+  Runs with persistence off and a 128 MB allkeys-lru cap: everything in it is
+  rebuildable from MySQL, so it must never be what fills the disk or the host's
+  memory.
+
 backend
   Spring Boot application container.
   Builds from backend/Dockerfile.
-  Connects to the MySQL service through the Docker network.
+  Connects to the MySQL and Redis services through the Docker network.
   Exposes port 8080.
 ```
 
-The backend waits for MySQL to become healthy before starting. Flyway runs automatically when the backend starts.
+The backend waits for MySQL to become *healthy* before starting, but only for Redis to have *started* — the application serves every request with or without a cache, so a slow Redis must not hold up the API. Flyway runs automatically when the backend starts.
 
 ## Running Locally
 
@@ -425,6 +444,7 @@ Optional for manual backend execution:
 - Java 21
 - Maven
 - Local MySQL installation
+- Local Redis installation (optional — set `CACHE_TYPE=none` to skip it entirely)
 
 ### Option A: Docker Backend Environment
 
@@ -492,7 +512,9 @@ GRANT ALL PRIVILEGES ON bienvenue_blainville.* TO 'blainville_app'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-Optional, only if you want to run the integration test suite (`mvn test -Pintegration-test`): create a second database for it, so tests never touch your working data.
+The backend expects a Redis on `localhost:6379` by default. Start one with `redis-server`, point `REDIS_HOST`/`REDIS_PORT` elsewhere, or set `CACHE_TYPE=none` to run without a cache — the application serves every request either way.
+
+Optional, only if you want to run the integration test suite (`mvn test -Pintegration-test`): create a second database for it, so tests never touch your working data. `RedisCacheIntegrationTest` additionally needs a running Redis.
 
 ```sql
 CREATE DATABASE bienvenue_blainville_test
@@ -531,6 +553,9 @@ DB_PASSWORD
 APP_JWT_SECRET
 APP_ADMIN_EMAIL
 APP_ADMIN_PASSWORD
+REDIS_HOST       # default: localhost
+REDIS_PORT       # default: 6379
+CACHE_TYPE       # default: redis; set to `none` to run without Redis entirely
 ```
 
 `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` seed the first `ADMIN` account on startup, if no `ADMIN` account exists yet.
@@ -583,11 +608,18 @@ cd backend
 mvn test
 ```
 
-Run the full test suite including integration tests (requires a running MySQL matching `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, and a `bienvenue_blainville_test` database granted to that user — see "Option B: Manual Local Backend" above for creating the user):
+Run the full test suite including integration tests (requires a running MySQL matching `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, a `bienvenue_blainville_test` database granted to that user — see "Option B: Manual Local Backend" above for creating the user — and a running Redis on `localhost:6379`):
 
 ```bash
 cd backend
 mvn test -Pintegration-test
+```
+
+Measure what the Redis cache is worth (needs the backend running; run it once normally and once with `CACHE_TYPE=none` for the comparison):
+
+```bash
+cd docs/verification
+python3 cache_benchmark.py 300
 ```
 
 Build frontend:
@@ -626,14 +658,16 @@ Completed:
 - Seasonal and special collection reminder data.
 - Location and address support for special sorting records.
 - French, English, and Chinese i18n foundation, including the auth and admin flows.
-- Docker Compose setup for MySQL and backend.
+- Redis cache-aside layer over the two hot public reads (`@Cacheable` on the upcoming schedule and the active notices, keyed by day so nothing goes stale at midnight), with `@CacheEvict` on every admin write, a `CacheErrorHandler` that degrades to MySQL instead of failing the request, and fail-fast Lettuce options so a dead Redis costs milliseconds rather than seconds. Fully optional at runtime via `CACHE_TYPE=none`.
+- Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
 - Unit tests for the JWT service, auth service, and collection service (`mvn test`).
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
-- An opt-in integration test suite (`mvn test -Pintegration-test`) boots the full Spring context — real `SecurityConfig`, real MyBatis mappers, a real MySQL database — and drives it through MockMvc: register/login, RBAC (403 for a resident on `/api/admin/**`, 401 for no/invalid token), notice date-range validation, and full admin CRUD for notices and sorting items.
+- GitHub Actions CI on every push: frontend type-check and build, backend unit tests, and the integration suite against MySQL 8.4 and Redis 7 service containers.
+- An opt-in integration test suite (`mvn test -Pintegration-test`) boots the full Spring context — real `SecurityConfig`, real MyBatis mappers, a real MySQL database, a real Redis — and drives it through MockMvc: register/login, RBAC (403 for a resident on `/api/admin/**`, 401 for no/invalid token), notice date-range validation, full admin CRUD for notices and sorting items, and the cache's hit/key/JSON-round-trip/eviction behaviour.
 
 Planned or in progress:
 
@@ -644,7 +678,6 @@ Planned or in progress:
 - PWA manifest and service worker.
 - Optional production frontend container.
 - Deployment configuration.
-- Run the integration test suite in CI against a containerized MySQL (e.g. Testcontainers), instead of requiring a developer-provisioned local database.
 
 ## Live Verification
 
@@ -665,6 +698,20 @@ Tested rather than guessed: [`verification/load_test.py`](verification/load_test
 | 200 | 200/200 (100%) | 4392 / 5724 ms | 594 / 2264 ms |
 
 Zero failed requests up to 200 simultaneous registrations, on an untuned single-machine dev setup (Spring Boot's default 10-connection HikariCP pool, no caching, no load balancer). So: **yes, for 50 real concurrent users this held up without errors in testing** — see the linked results for what this test does and doesn't prove before treating it as a production capacity guarantee.
+
+### What does the Redis cache actually buy?
+
+Measured rather than assumed, with `Com_select` read from MySQL's own `SHOW GLOBAL STATUS` before and after each run — 300 concurrent home-page loads (600 reads), via [`verification/cache_benchmark.py`](verification/cache_benchmark.py):
+
+| | `CACHE_TYPE=none` | `CACHE_TYPE=redis` |
+|---|---:|---:|
+| MySQL `SELECT`s executed | 603 | **1** |
+| Latency avg / p95 | 338 / 577 ms | **73 / 153 ms** |
+| Successful | 300/300 | 300/300 |
+
+More interesting than the speedup is what happened when `redis-server` was killed under the running application. The site stayed up and served correct data — the `CacheErrorHandler` was doing its job — but every request took **4.0 seconds**, because Lettuce's default behaviour is to *queue* commands on a dead connection until the command timeout expires, twice per request. Switching Lettuce to `DisconnectedBehavior.REJECT_COMMANDS` brought that to **0.01 seconds**, and `autoReconnect` restores caching by itself when Redis comes back, with no restart. Full transcripts in [`verification/redis-cache-results.md`](verification/redis-cache-results.md).
+
+This is the same lesson as the six startup bugs above, in a different costume: "it returns 200" is not the same as "it works", and only running the failure case tells you which one you have.
 
 ## Security Notes
 
@@ -721,7 +768,6 @@ Short-term:
 
 - Move sorting guide data into the `sorting_item` tables and expose a search API, replacing the static frontend dataset.
 - Add an edit form to the admin schedule and sorting item panels (the backend `PUT /{id}` endpoints already support it).
-- Wire the integration test suite into CI against a containerized MySQL (e.g. Testcontainers) instead of a developer-provisioned local database.
 
 Medium-term:
 

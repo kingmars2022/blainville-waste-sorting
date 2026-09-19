@@ -2,6 +2,9 @@ package com.bienvenueblainville.collection;
 
 import com.bienvenueblainville.collection.dto.CollectionEventRequest;
 import com.bienvenueblainville.common.Sector;
+import com.bienvenueblainville.config.CacheConfig;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,15 +25,38 @@ public class CollectionService {
         this.clock = Clock.systemDefaultZone();
     }
 
+    /**
+     * The hottest read in the app: every home page load calls it.
+     *
+     * <p>The cache key has to include today's date. The result depends on
+     * {@code LocalDate.now(clock)}, so a key of just (sector, days) would keep
+     * serving yesterday's "next collection" after midnight — the one moment
+     * this page absolutely has to be right. {@code days} is validated to 1..62
+     * by the controller, and {@code sector} is an enum, so the key space stays
+     * small and bounded rather than being driven by arbitrary user input.
+     */
+    @Cacheable(
+            cacheNames = CacheConfig.UPCOMING_COLLECTIONS,
+            key = "#root.target.today().toString() + ':' + #sector + ':' + #days"
+    )
     public List<CollectionEvent> upcoming(Sector sector, int days) {
-        LocalDate today = LocalDate.now(clock);
+        LocalDate today = today();
         return mapper.findUpcoming(sector, today, today.plusDays(days));
+    }
+
+    /** Exposed so the cache key above can depend on the same clock this service reads. */
+    public LocalDate today() {
+        return LocalDate.now(clock);
     }
 
     public List<CollectionEvent> all() {
         return mapper.findAll();
     }
 
+    // allEntries: a single schedule edit can change the answer for several
+    // sectors and every horizon at once, so there is no useful narrower key
+    // to evict. The cache refills on the next request.
+    @CacheEvict(cacheNames = CacheConfig.UPCOMING_COLLECTIONS, allEntries = true)
     public CollectionEvent create(CollectionEventRequest request) {
         Map<String, Object> params = new HashMap<>();
         params.put("collectionDate", request.collectionDate());
@@ -47,6 +73,7 @@ public class CollectionService {
         return mapper.findById(generatedId).orElseThrow();
     }
 
+    @CacheEvict(cacheNames = CacheConfig.UPCOMING_COLLECTIONS, allEntries = true)
     public CollectionEvent update(Long id, CollectionEventRequest request) {
         requireExists(id);
         mapper.update(
@@ -63,6 +90,7 @@ public class CollectionService {
         return mapper.findById(id).orElseThrow();
     }
 
+    @CacheEvict(cacheNames = CacheConfig.UPCOMING_COLLECTIONS, allEntries = true)
     public void delete(Long id) {
         requireExists(id);
         mapper.delete(id);

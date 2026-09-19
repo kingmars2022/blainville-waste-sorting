@@ -3,12 +3,13 @@ name: Validate application
 # Three things have to hold before a change lands:
 #   1. the Vue frontend type-checks and builds,
 #   2. the unit tests pass without any infrastructure,
-#   3. the integration tests pass against a REAL MySQL - the whole point of
-#      that suite is to catch what Mockito-based unit tests structurally
-#      cannot (see AuthServiceTest vs AuthenticationFlowIntegrationTest).
+#   3. the integration tests pass against a REAL MySQL and a REAL Redis - the
+#      whole point of that suite is to catch what Mockito-based unit tests
+#      structurally cannot (see AuthServiceTest vs
+#      AuthenticationFlowIntegrationTest).
 #
 # The integration tests are opt-in locally (`mvn test -Pintegration-test`)
-# because they need a database. In CI the database is always there, so they
+# because they need that infrastructure. In CI it is always there, so they
 # always run.
 
 on:
@@ -59,7 +60,7 @@ jobs:
         run: mvn -B --no-transfer-progress test
 
   integration-tests:
-    name: Backend integration tests (real MySQL)
+    name: Backend integration tests (real MySQL + Redis)
     runs-on: ubuntu-latest
 
     services:
@@ -78,6 +79,19 @@ jobs:
           --health-timeout=5s
           --health-retries=10
 
+      # RedisCacheIntegrationTest asserts against real Redis keys - that the
+      # cache is keyed by day/sector/horizon, that values round-trip through
+      # JSON with their dates intact, and that admin writes evict.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -90,6 +104,6 @@ jobs:
       # The credentials below match the @DynamicPropertySource block in
       # AuthenticationFlowIntegrationTest, which is what the Spring context
       # actually reads. Flyway migrates V1-V6 on context startup.
-      - name: Run integration tests against MySQL
+      - name: Run integration tests against MySQL and Redis
         working-directory: backend
         run: mvn -B --no-transfer-progress test -Pintegration-test
