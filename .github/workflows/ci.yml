@@ -106,4 +106,12 @@ jobs:
       # actually reads. Flyway migrates V1-V6 on context startup.
       - name: Run integration tests against MySQL and Redis
         working-directory: backend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: bienvenue_blainville_test
+          DB_USERNAME: blainville_app
+          DB_PASSWORD: DevLocalPass123!
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
         run: mvn -B --no-transfer-progress test -Pintegration-test

@@ -5,9 +5,11 @@ import com.bienvenueblainville.auth.dto.LoginRequest;
 import com.bienvenueblainville.auth.dto.RegisterRequest;
 import com.bienvenueblainville.common.Role;
 import com.bienvenueblainville.preference.UserPreferenceMapper;
+import com.bienvenueblainville.security.JwtProperties;
 import com.bienvenueblainville.security.JwtService;
 import com.bienvenueblainville.user.AppUser;
 import com.bienvenueblainville.user.AppUserMapper;
+import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -35,7 +37,6 @@ class AuthServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private AuthenticationManager authenticationManager;
-    @Mock
     private JwtService jwtService;
 
     private AuthService authService;
@@ -43,6 +44,11 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        jwtService = new JwtService(new JwtProperties(
+                "bienvenue-a-blainville-test",
+                "unit-test-secret-key-must-be-long-enough-for-hmac-sha",
+                60
+        ));
         authService = new AuthService(appUserMapper, userPreferenceMapper, passwordEncoder, authenticationManager, jwtService);
     }
 
@@ -53,11 +59,14 @@ class AuthServiceTest {
                 .thenReturn(Optional.empty())
                 .thenReturn(Optional.of(created));
         when(passwordEncoder.encode("password123")).thenReturn("hashed");
-        when(jwtService.generateToken(7L, "new@example.com", Role.USER)).thenReturn("token-abc");
 
         AuthResponse response = authService.register(new RegisterRequest("new@example.com", "password123"));
 
-        assertThat(response.token()).isEqualTo("token-abc");
+        Optional<Claims> claims = jwtService.parseClaims(response.token());
+        assertThat(claims).isPresent();
+        assertThat(claims.get().getSubject()).isEqualTo("7");
+        assertThat(claims.get().get("email", String.class)).isEqualTo("new@example.com");
+        assertThat(claims.get().get("role", String.class)).isEqualTo("USER");
         assertThat(response.userId()).isEqualTo(7L);
         assertThat(response.role()).isEqualTo(Role.USER);
         verify(appUserMapper).insert("new@example.com", "hashed", Role.USER);

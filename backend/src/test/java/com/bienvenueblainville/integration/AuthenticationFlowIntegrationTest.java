@@ -39,19 +39,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class AuthenticationFlowIntegrationTest {
-    private static final String ADMIN_EMAIL = "admin@blainville.local";
-    private static final String ADMIN_PASSWORD = "IntegrationTestAdminPass123!";
+    private static final String ADMIN_EMAIL = IntegrationEnvironment.ADMIN_EMAIL;
+    private static final String ADMIN_PASSWORD = IntegrationEnvironment.ADMIN_PASSWORD;
 
     @DynamicPropertySource
-    static void databaseProperties(DynamicPropertyRegistry registry) {
-        registry.add("DB_URL", () -> "jdbc:mysql://localhost:3306/bienvenue_blainville_test"
-                + "?useUnicode=true&characterEncoding=utf8&serverTimezone=America/Toronto"
-                + "&allowPublicKeyRetrieval=true&useSSL=false");
-        registry.add("DB_USERNAME", () -> "blainville_app");
-        registry.add("DB_PASSWORD", () -> "DevLocalPass123!");
-        registry.add("APP_JWT_SECRET", () -> "integration-test-jwt-secret-long-enough-for-hmac-sha384");
-        registry.add("APP_ADMIN_EMAIL", () -> ADMIN_EMAIL);
-        registry.add("APP_ADMIN_PASSWORD", () -> ADMIN_PASSWORD);
+    static void infrastructureProperties(DynamicPropertyRegistry registry) {
+        IntegrationEnvironment.register(registry);
     }
 
     @Autowired

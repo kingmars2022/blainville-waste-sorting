@@ -48,15 +48,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RedisCacheIntegrationTest {
 
     @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        registry.add("DB_URL", () -> "jdbc:mysql://localhost:3306/bienvenue_blainville_test"
-                + "?useUnicode=true&characterEncoding=utf8&serverTimezone=America/Toronto"
-                + "&allowPublicKeyRetrieval=true&useSSL=false");
-        registry.add("DB_USERNAME", () -> "blainville_app");
-        registry.add("DB_PASSWORD", () -> "DevLocalPass123!");
-        registry.add("APP_JWT_SECRET", () -> "integration-test-jwt-secret-long-enough-for-hmac-sha384");
-        registry.add("APP_ADMIN_EMAIL", () -> "admin@blainville.local");
-        registry.add("APP_ADMIN_PASSWORD", () -> "IntegrationTestAdminPass123!");
+    static void infrastructureProperties(DynamicPropertyRegistry registry) {
+        IntegrationEnvironment.register(registry);
+        // This class exists to test the cache, so it pins the cache on even if
+        // a developer has CACHE_TYPE=none in their shell.
         registry.add("CACHE_TYPE", () -> "redis");
     }
 

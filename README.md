@@ -124,7 +124,9 @@ cd backend && mvn test
 ```
 
 Integration tests are opt-in locally because they need a database and a Redis
-(CI always runs them):
+(CI always runs them). With the default `.env.example` values copied into
+`.env`, they run against the MySQL and Redis services exposed by Docker
+Compose:
 
 ```bash
 docker compose up -d mysql redis
