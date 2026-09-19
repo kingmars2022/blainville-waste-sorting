@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bienvenueblainville.events.OutboxMapper">
+
+    <insert id="insert">
+        insert into outbox_event (event_id, aggregate_type, aggregate_id, event_type, payload)
+        values (#{eventId}, #{aggregateType}, #{aggregateId}, #{eventType}, #{payload})
+    </insert>
+
+    <select id="findUnpublished" resultType="com.bienvenueblainville.events.OutboxEntry">
+        select id, event_id as eventId, aggregate_type as aggregateType, aggregate_id as aggregateId,
+               event_type as eventType, payload, occurred_at as occurredAt, published_at as publishedAt
+        from outbox_event
+        where published_at is null
+        <!--
+            Oldest first: events about one notice must reach consumers in the
+            order they happened, or an audit trail can show an update after the
+            deletion that followed it.
+        -->
+        order by id
+        limit #{limit}
+    </select>
+
+    <update id="markPublished">
+        update outbox_event set published_at = current_timestamp(3) where id = #{id}
+    </update>
+
+    <select id="countUnpublished" resultType="long">
+        select count(*) from outbox_event where published_at is null
+    </select>
+</mapper>

@@ -38,6 +38,11 @@ public final class IntegrationEnvironment {
         registry.add("APP_ADMIN_PASSWORD", () -> ADMIN_PASSWORD);
         registry.add("REDIS_HOST", () -> env("REDIS_HOST", "localhost"));
         registry.add("REDIS_PORT", () -> env("REDIS_PORT", "6379"));
+        // Off unless a test asks for it. Kafka is the one dependency here that
+        // cannot be shared between test classes cheaply, so the suites that do
+        // not exercise events should not pay to start a broker - nor sit in a
+        // reconnect loop against one that is not there.
+        registry.add("app.events.enabled", () -> "false");
     }
 
     static String env(String name, String fallback) {

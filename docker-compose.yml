@@ -34,6 +34,41 @@ services:
       timeout: 5s
       retries: 10
 
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: bienvenue-blainville-kafka
+    restart: unless-stopped
+    # KRaft mode: no ZooKeeper. One broker that is also its own controller,
+    # which is the right size for a single-machine development stack.
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+
+  mongo:
+    image: mongo:7
+    container_name: bienvenue-blainville-mongo
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -45,6 +80,13 @@ services:
       # started, not healthy: the app boots and serves fine without Redis,
       # so a slow cache must not hold up the API.
       redis:
+        condition: service_started
+      # Same reasoning: the outbox records events into MySQL whether or not a
+      # broker is up, and the audit trail defaults to MySQL. Neither is allowed
+      # to delay the API.
+      kafka:
+        condition: service_started
+      mongo:
         condition: service_started
     environment:
       DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-bienvenue_blainville}?useUnicode=true&characterEncoding=utf8&serverTimezone=America/Toronto&allowPublicKeyRetrieval=true&useSSL=false
@@ -62,9 +104,14 @@ services:
       # in .env (git-ignored) to have Claude do the wording.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ASSISTANT_RATE_LIMIT: ${ASSISTANT_RATE_LIMIT:-30}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MONGODB_URI: mongodb://mongo:27017/bienvenue_blainville
+      EVENTS_ENABLED: ${EVENTS_ENABLED:-true}
+      AUDIT_STORE: ${AUDIT_STORE:-mysql}
       TZ: America/Toronto
     ports:
       - "${BACKEND_PORT:-8080}:8080"
 
 volumes:
   mysql_data:
+  mongo_data:

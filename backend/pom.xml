@@ -16,6 +16,7 @@
         <mybatis-spring-boot.version>3.0.3</mybatis-spring-boot.version>
         <jjwt.version>0.12.6</jjwt.version>
         <anthropic-sdk.version>2.64.0</anthropic-sdk.version>
+        <mongo-java-server.version>1.46.0</mongo-java-server.version>
     </properties>
 
     <dependencyManagement>
@@ -50,6 +51,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
         </dependency>
         <dependency>
             <groupId>org.mybatis.spring.boot</groupId>
@@ -94,6 +103,25 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            A MongoDB wire-protocol server that runs inside the JVM. The usual
+            embedded-Mongo library downloads a real mongod binary, which needs
+            network access this project's CI cannot assume; this one is an
+            ordinary jar, so the integration tests exercise the real Spring Data
+            MongoDB driver against a real protocol implementation with nothing
+            to install.
+        -->
+        <dependency>
+            <groupId>de.bwaldvogel</groupId>
+            <artifactId>mongo-java-server</artifactId>
+            <version>${mongo-java-server.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

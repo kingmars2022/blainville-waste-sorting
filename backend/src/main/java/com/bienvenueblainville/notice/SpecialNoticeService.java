@@ -1,11 +1,14 @@
 package com.bienvenueblainville.notice;
 
 import com.bienvenueblainville.config.CacheConfig;
+import com.bienvenueblainville.events.OutboxRecorder;
 import com.bienvenueblainville.notice.dto.NoticeRequest;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
@@ -17,10 +20,12 @@ import java.util.Map;
 @Service
 public class SpecialNoticeService {
     private final SpecialNoticeMapper mapper;
+    private final OutboxRecorder outbox;
     private final Clock clock;
 
-    public SpecialNoticeService(SpecialNoticeMapper mapper) {
+    public SpecialNoticeService(SpecialNoticeMapper mapper, OutboxRecorder outbox) {
         this.mapper = mapper;
+        this.outbox = outbox;
         this.clock = Clock.systemDefaultZone();
     }
 
@@ -47,6 +52,11 @@ public class SpecialNoticeService {
     // A notice publish is the one write residents notice immediately (a
     // cancelled collection, a storm delay), so it evicts rather than waiting
     // out the TTL.
+    //
+    // @Transactional is load-bearing here, not decoration: the event row and
+    // the notice row must commit together or not at all. Without it the outbox
+    // pattern degrades into the dual-write bug it exists to prevent.
+    @Transactional
     @CacheEvict(cacheNames = CacheConfig.ACTIVE_NOTICES, allEntries = true)
     public SpecialNotice create(NoticeRequest request) {
         requireValidDateRange(request);
@@ -65,21 +75,35 @@ public class SpecialNoticeService {
 
         mapper.insert(params);
         Long generatedId = ((Number) params.get("id")).longValue();
-        return mapper.findById(generatedId).orElseThrow();
+        SpecialNotice created = mapper.findById(generatedId).orElseThrow();
+
+        outbox.recordNoticeEvent("created", generatedId, currentActor(), null, created);
+        return created;
     }
 
+    @Transactional
     @CacheEvict(cacheNames = CacheConfig.ACTIVE_NOTICES, allEntries = true)
     public SpecialNotice update(Long id, NoticeRequest request) {
-        requireExists(id);
+        SpecialNotice before = requireExists(id);
         requireValidDateRange(request);
         mapper.update(toNotice(id, request));
-        return mapper.findById(id).orElseThrow();
+        SpecialNotice after = mapper.findById(id).orElseThrow();
+
+        // Both sides captured from the database rather than from the request,
+        // so the trail records what actually changed and not what was asked for.
+        outbox.recordNoticeEvent("updated", id, currentActor(), before, after);
+        return after;
     }
 
+    @Transactional
     @CacheEvict(cacheNames = CacheConfig.ACTIVE_NOTICES, allEntries = true)
     public void delete(Long id) {
-        requireExists(id);
+        SpecialNotice before = requireExists(id);
         mapper.delete(id);
+
+        // Recorded before the row is gone for good - after the delete there is
+        // nothing left to describe what was removed.
+        outbox.recordNoticeEvent("deleted", id, currentActor(), before, null);
     }
 
     private void requireValidDateRange(NoticeRequest request) {
@@ -88,9 +112,21 @@ public class SpecialNoticeService {
         }
     }
 
-    private void requireExists(Long id) {
-        mapper.findById(id).orElseThrow(() ->
+    private SpecialNotice requireExists(Long id) {
+        return mapper.findById(id).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Notice " + id + " not found"));
+    }
+
+    /**
+     * Who is making the change, for the audit trail.
+     *
+     * <p>Read from the security context rather than passed in, so no caller can
+     * forget it and no caller can claim to be someone else. "system" covers the
+     * seeder and any future scheduled job.
+     */
+    private String currentActor() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication == null ? "system" : authentication.getName();
     }
 
     private SpecialNotice toNotice(Long id, NoticeRequest request) {

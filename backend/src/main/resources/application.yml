@@ -23,6 +23,28 @@ spring:
       # Redis does not even pay this timeout.
       connect-timeout: 500ms
       timeout: 500ms
+    # The audit trail's document-store option. Nothing connects at startup, so
+    # an unset MongoDB is only a problem if app.audit.store=mongodb.
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/bienvenue_blainville}
+      auto-index-creation: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Wait for every in-sync replica. The relay only marks a row published
+      # once the broker has acknowledged it, so a weaker ack here would mean
+      # marking events sent that a broker failover could still lose.
+      acks: all
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    listener:
+      # Consumers are idempotent on the event id, so at-least-once redelivery
+      # is safe and a missing commit is preferable to a lost event.
+      ack-mode: record
 
 mybatis:
   mapper-locations: classpath:mappers/**/*.xml
@@ -49,6 +71,19 @@ app:
       # This is the only endpoint that can spend money per request, and it is
       # unauthenticated. Counted per IP in Redis; see AssistantRateLimiter.
       requests-per-hour: ${ASSISTANT_RATE_LIMIT:30}
+  audit:
+    # `mysql` (default) stores the trail in a JSON column of the database this
+    # app already runs; `mongodb` uses the document store. Same interface,
+    # same tests - see AuditStore for when each one earns its place.
+    store: ${AUDIT_STORE:mysql}
+  events:
+    # The outbox always records, with or without a broker - it is a plain
+    # insert in the business transaction. This switch controls only the relay
+    # and the consumers, so a deployment without Kafka keeps its events on the
+    # table rather than losing them.
+    enabled: ${EVENTS_ENABLED:true}
+    relay:
+      interval-ms: ${EVENTS_RELAY_INTERVAL_MS:1000}
   collection:
     put-out-after: "20:00"
     put-out-before: "06:00"

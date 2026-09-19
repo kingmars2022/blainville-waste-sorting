@@ -12,8 +12,11 @@ flowchart LR
     A -->|"cache-aside + rate limit"| R[("Redis")]
     A -->|"retrieval only"| AI["Sorting assistant<br/>RAG, FR/EN/ZH"]
     A -->|"reads run, writes wait"| AG["Admin agent<br/>plan, then approve"]
+    A -->|"same transaction"| OB[("outbox_event")]
+    OB -.->|"relay, at-least-once"| K["Kafka<br/>2 consumer groups"]
+    K --> AU[("Audit trail<br/>MySQL JSON or MongoDB")]
     A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
-    FW["Flyway V1-V7"] -.->|"migrates on startup"| D
+    FW["Flyway V1-V8"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
 ```
 
@@ -21,7 +24,9 @@ flowchart LR
 |---|---|
 | Frontend | Vue 3, TypeScript, Pinia, Vite |
 | API | Spring Boot, Java 21 |
-| Persistence | MyBatis, MySQL (7 tables), Flyway (7 migrations) |
+| Persistence | MyBatis, MySQL (9 tables), Flyway (8 migrations) |
+| Events | Transactional outbox → Kafka, two consumer groups |
+| Audit trail | MongoDB or MySQL JSON, same interface and same tests |
 | Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
 | Assistant | Retrieval-augmented Q&A over MySQL full-text; Claude optional |
 | Admin agent | Claude tool-use with a human approval step; plans held in Redis |
@@ -88,6 +93,26 @@ from the arguments that will actually run, not asked of the model, so it
 cannot misrepresent them.
 [`agent/`](backend/src/main/java/com/bienvenueblainville/agent),
 [what was verified](docs/verification/agent-results.md)
+
+**Events go through an outbox, because publishing from a service method is a
+dual write.** Calling Kafka inside `createNotice` means the database commit and
+the broker publish can each fail while the other succeeds — residents get told
+about a notice that was rolled back, or never told about one that exists, and
+retrying cannot fix a failure that lives in the gap between two systems. So the
+event row is inserted in the *same MySQL transaction* as the notice, and a
+relay moves committed rows to Kafka afterwards. That makes delivery
+at-least-once, so both consumers are idempotent on the event id — a single
+upsert, not a read-then-write that two replays could race.
+[`events/`](backend/src/main/java/com/bienvenueblainville/events),
+[what was verified](docs/verification/events-and-audit-results.md)
+
+**The audit trail is implemented twice, and MySQL wins.** `AuditStore` has a
+MongoDB implementation and a MySQL-JSON one, and the same contract test runs
+against both — that result is the argument. At this scale neither struggles
+where the other doesn't, so the trail defaults to the database this app
+already runs, and `AUDIT_STORE=mongodb` switches it. What would actually earn
+the document store is querying *into* heterogeneous snapshots, or retention
+measured in years; neither is true yet.
 
 **Translation is a table, not a resource bundle.** `sorting_item_translation`
 and `sorting_item_keyword` hold the three languages and their search terms, so
@@ -164,7 +189,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-71 tests: 44 unit, 27 integration.
+84 tests: 46 unit, 38 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -177,6 +202,8 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
 | `AssistantIntegrationTest` | 8 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, real-Redis quota |
 | `AdminAgentIntegrationTest` | 7 | real writes, single-use plans, plan ownership, validation, RBAC |
+| `NoticeEventPipelineIntegrationTest` | 5 | outbox commits with the write, relay, two consumer groups, replay safety |
+| `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
 | `AdminAgentServiceTest` | 4 | writes recorded not executed, reads executed, turn ceiling |
 | `StepSummariserTest` | 4 | the confirmation line, including missing arguments |
 | `QueryNormalizerTest` | 6 | stopword stripping, accent folding, per-language rules |
@@ -211,7 +238,7 @@ cd backend && mvn test -Pintegration-test
 ```bash
 cp .env.example .env          # set DB_URL, DB_USERNAME, DB_PASSWORD,
                               # APP_JWT_SECRET, APP_ADMIN_EMAIL, APP_ADMIN_PASSWORD
-docker compose up -d --build  # MySQL + Redis + backend; Flyway migrates V1-V7
+docker compose up -d --build  # MySQL + Redis + Kafka + MongoDB + backend; Flyway V1-V8
 cd frontend && npm ci && npm run dev
 ```
 
