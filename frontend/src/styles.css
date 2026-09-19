@@ -420,3 +420,94 @@ textarea {
     flex-wrap: wrap;
   }
 }
+
+/* --- Sorting assistant ------------------------------------------------- */
+
+.assistant {
+  background: #ffffff;
+  border: 1px solid #d8e2dc;
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.assistant h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+}
+
+.assistant-hint {
+  margin: 0 0 0.9rem;
+  color: #55655c;
+  font-size: 0.9rem;
+}
+
+.assistant-form {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.assistant-form .search {
+  flex: 1 1 18rem;
+  margin: 0;
+}
+
+.assistant-form button {
+  padding: 0.7rem 1.4rem;
+  border: 0;
+  border-radius: 8px;
+  background: #1f6f54;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.assistant-form button:disabled {
+  background: #9db3a9;
+  cursor: not-allowed;
+}
+
+.assistant-answer {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  background: #f1f7f4;
+  border-left: 4px solid #1f6f54;
+}
+
+/* A refusal must not look like an answer. */
+.assistant-answer.ungrounded {
+  background: #fdf5ec;
+  border-left-color: #c08a3e;
+}
+
+.assistant-answer p {
+  margin: 0 0 0.5rem;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.assistant-sources {
+  font-size: 0.85rem;
+  color: #40544a;
+}
+
+.assistant-sources a {
+  margin-left: 0.4rem;
+}
+
+.assistant-provider {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #7a8a82;
+}
+
+.assistant-error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #fdecec;
+  color: #8c2f2f;
+  font-size: 0.9rem;
+}

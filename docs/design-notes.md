@@ -112,6 +112,28 @@ Each sorting entry can include:
 
 *A live search for "pizza" — filtering, seasonal reminder cards, and the location field are all visible in this one screenshot (see the next two sections).*
 
+### Sorting Assistant (Ask a Question)
+
+Above the search grid, residents can ask in their own words instead of guessing the word the guide uses. The question goes to `POST /api/assistant/ask`, which searches the sorting guide in MySQL, and the answer is composed **only** from what that search returned.
+
+The entries behind each answer are shown, not tucked away: an answer a resident cannot trace back to the municipal guide is worth less than one they can check, and showing sources makes a bad retrieval obvious rather than invisible.
+
+<img src="verification/screenshots/10-assistant-fr.png" width="600" alt="Sorting assistant answering a French question about a greasy pizza box, showing the guide entry the answer came from" />
+
+*"Où va une boîte à pizza sale ?" — answered from the soiled-paper-and-cardboard entry, with that entry named underneath.*
+
+When the guide has nothing relevant, the assistant says so, and the refusal is styled differently from an answer so it cannot be mistaken for one at a glance.
+
+<img src="verification/screenshots/11-assistant-refusal.png" width="600" alt="Sorting assistant refusing a question about the mayor's phone number, in an amber panel distinct from a normal answer" />
+
+*A question the sorting guide cannot answer. Earlier in development this exact question came back answered — see "Does the assistant make things up?" below.*
+
+The same assistant works in Chinese, which needs a different full-text parser to work at all:
+
+<img src="verification/screenshots/12-assistant-zh.png" width="600" alt="Sorting assistant answering a Chinese question about used batteries, pointing to the ecocentre with its address" />
+
+*"废电池怎么处理？" — routed to the ecocentre entry, with its address.*
+
 ### Seasonal and Special Collection Reminders
 
 The app includes reminders for collection services that do not fit into regular bin pickup.
@@ -250,6 +272,11 @@ The backend `PUT /{id}` endpoints for schedule and sorting items work, but the a
 
 - Redis 7 (via Spring Cache / Lettuce)
 
+### Assistant
+
+- Retrieval-augmented Q&A over MySQL full-text search (two parsers: word for French/English, ngram for Chinese)
+- Anthropic Java SDK, optional - a no-API-key composer is the default
+
 ### DevOps and Tooling
 
 - Docker
@@ -325,6 +352,20 @@ The two reads on the critical path of every page load — the upcoming collectio
 Redis rather than an in-process cache (Caffeine) because the interesting property is that the cache is *shared*: two backend instances behind a load balancer see the same cached schedule and the same eviction, so an admin edit is visible everywhere immediately rather than on each instance's own TTL. That matters more here than raw lookup speed.
 
 The cache is deliberately optional. It is a read cache in front of MySQL, never a source of truth, so the design constraint was that losing Redis must degrade the site to "slower", not to "down". `CACHE_TYPE=none` runs the entire stack without Redis at all. See [`verification/redis-cache-results.md`](verification/redis-cache-results.md) for what this bought (603 MySQL `SELECT`s → 1 across 300 concurrent page loads) and what it cost when Redis was deliberately killed mid-run.
+
+### Why retrieval-augmented, and not just a chatbot
+
+The sorting guide is the kind of thing residents ask in their own words ("la boîte à pizza grasse", "废电池") and the kind of thing an app answers badly with exact-match search. A language model is the obvious fit for the wording - and the worst possible fit for the facts, because the failure mode is a fluent wrong answer about which bin something goes in, and the resident has no way to tell.
+
+So the model is never asked what the rule is. Retrieval finds the guide entries from MySQL; the model is handed those entries and asked to phrase them. If retrieval finds nothing, `AssistantService` refuses without calling a model at all - the grounding rule lives above the composer, so it cannot be prompted away or lost when the composer is swapped.
+
+The same reasoning decides the default: the `template` composer answers from the retrieved entry with no model involved. It is not a stub. Retrieval has already done the hard part, and reading the entry back in the resident's language is genuinely useful - so a fresh clone with no API key gets a working feature, CI gets something deterministic to assert on, and the Claude-backed composer has a baseline to be measured against rather than merely assumed better than.
+
+### Why the assistant endpoint is rate-limited when nothing else is
+
+It is the only route that can spend money per request, and it is unauthenticated. Without a cap, one loop costs real money and nothing in the application stops it.
+
+Worth noting what the limiter does when Redis is gone: it returns 503, while the cache in the same Redis carries on serving from MySQL. Opposite policies on purpose - the cache protects latency, so losing it should cost speed and never availability; the limiter protects a budget, so losing it must not quietly remove the only spending cap.
 
 ### Why Docker Compose
 
@@ -553,6 +594,10 @@ DB_PASSWORD
 APP_JWT_SECRET
 APP_ADMIN_EMAIL
 APP_ADMIN_PASSWORD
+ASSISTANT_PROVIDER  # default: template (no API key needed); set to `anthropic` for Claude
+ASSISTANT_MODEL     # default: claude-opus-5
+ANTHROPIC_API_KEY   # only read when provider=anthropic; never commit a real key
+ASSISTANT_RATE_LIMIT # default: 30 questions per IP per hour
 REDIS_HOST       # default: localhost
 REDIS_PORT       # default: 6379
 CACHE_TYPE       # default: redis; set to `none` to run without Redis entirely
@@ -658,6 +703,7 @@ Completed:
 - Seasonal and special collection reminder data.
 - Location and address support for special sorting records.
 - French, English, and Chinese i18n foundation, including the auth and admin flows.
+- A grounded trilingual sorting assistant (`POST /api/assistant/ask`): MySQL full-text retrieval over `sorting_item_translation`/`sorting_item_keyword` with two parsers (word for French/English, ngram for Chinese), an application-side stopword filter, an explicit refusal when nothing relevant is retrieved, per-IP rate limiting in Redis, and a pluggable composer that is either a no-cost template or Claude. Scored 12/12 precision@1 and 6/6 refusal accuracy over an 18-question set.
 - Redis cache-aside layer over the two hot public reads (`@Cacheable` on the upcoming schedule and the active notices, keyed by day so nothing goes stale at midnight), with `@CacheEvict` on every admin write, a `CacheErrorHandler` that degrades to MySQL instead of failing the request, and fail-fast Lettuce options so a dead Redis costs milliseconds rather than seconds. Fully optional at runtime via `CACHE_TYPE=none`.
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
@@ -671,7 +717,7 @@ Completed:
 
 Planned or in progress:
 
-- Sorting search backed by the `sorting_item` / `sorting_item_translation` / `sorting_item_keyword` tables instead of the static frontend dataset.
+- Sorting search backed by the `sorting_item` / `sorting_item_translation` / `sorting_item_keyword` tables instead of the static frontend dataset. *(The assistant already queries those tables; the grid below it still renders the static dataset.)*
 - Edit support for existing collection schedule and sorting item admin entries (currently create/list/delete only in the UI — the backend `PUT /{id}` endpoints already support it).
 - Complete import of official Blainville sorting records.
 - Future-year collection calendar import.
@@ -712,6 +758,17 @@ Measured rather than assumed, with `Com_select` read from MySQL's own `SHOW GLOB
 More interesting than the speedup is what happened when `redis-server` was killed under the running application. The site stayed up and served correct data — the `CacheErrorHandler` was doing its job — but every request took **4.0 seconds**, because Lettuce's default behaviour is to *queue* commands on a dead connection until the command timeout expires, twice per request. Switching Lettuce to `DisconnectedBehavior.REJECT_COMMANDS` brought that to **0.01 seconds**, and `autoReconnect` restores caching by itself when Redis comes back, with no restart. Full transcripts in [`verification/redis-cache-results.md`](verification/redis-cache-results.md).
 
 This is the same lesson as the six startup bugs above, in a different costume: "it returns 200" is not the same as "it works", and only running the failure case tells you which one you have.
+
+### Does the assistant make things up?
+
+Not measurably, and the design is what stops it rather than the prompt. Scored over 18 questions in all three languages ([`verification/assistant_eval.py`](verification/assistant_eval.py)): **precision@1 12/12, refusal accuracy 6/6**.
+
+Getting the refusals right took two rounds of measurement, and both findings were invisible from reading the code:
+
+1. A single ngram full-text index - the obvious choice, since ngram is the only parser that can tokenize Chinese - made refusal impossible in French and English. "Comment réparer ma voiture ?" scored 4.37 against "Encombrants" on incidental character-bigram overlap, higher than some genuine matches scored. Fixed by giving Chinese its own ngram-indexed generated columns and searching French and English through the word parser.
+2. The word parser then answered "Quel est le numéro de téléphone du maire ?" with household-waste advice, entirely on the word **est** - InnoDB's built-in stopword list is English-only. Fixed in the application rather than by a server variable someone has to remember to set.
+
+Full transcripts, per-word score breakdowns and the browser screenshots are in [`verification/assistant-results.md`](verification/assistant-results.md).
 
 ## Security Notes
 

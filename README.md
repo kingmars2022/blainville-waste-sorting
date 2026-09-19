@@ -9,7 +9,8 @@ the sorting guide and public notices.
 flowchart LR
     V["Vue 3 console<br/>FR / EN / ZH"] -->|"Bearer JWT"| F["JwtAuthenticationFilter"]
     F --> A["Spring Boot<br/>7 controllers"]
-    A -->|"cache-aside"| R[("Redis<br/>hot reads")]
+    A -->|"cache-aside + rate limit"| R[("Redis")]
+    A -->|"retrieval only"| AI["Sorting assistant<br/>RAG, FR/EN/ZH"]
     A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
     FW["Flyway V1-V6"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
@@ -21,6 +22,7 @@ flowchart LR
 | API | Spring Boot, Java 21 |
 | Persistence | MyBatis, MySQL (7 tables), Flyway (6 migrations) |
 | Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
+| Assistant | Retrieval-augmented Q&A over MySQL full-text; Claude optional |
 | Auth | Spring Security, JWT (HMAC), BCrypt |
 | Delivery | Docker Compose, GitHub Actions |
 
@@ -51,6 +53,19 @@ costs 0.01s instead of 4.0s.
 [`config/CacheConfig.java`](backend/src/main/java/com/bienvenueblainville/config/CacheConfig.java),
 [measurements](docs/verification/redis-cache-results.md)
 
+**The sorting assistant refuses when it doesn't know.** Residents ask in
+their own words, in any of the three languages, and the answer is retrieved
+from the municipal guide in MySQL — never generated from a model's memory.
+Grounding is enforced above the model: no retrieved context, no model call at
+all. Getting there needed two full-text parsers (ngram is the only one that
+can tokenize Chinese, and the only one loose enough to make a French refusal
+impossible) and an application-side stopword list (InnoDB's is English-only,
+so a stray `est` once made it answer a question about the mayor's phone number
+with bin advice). Scored over 18 questions: precision@1 12/12, refusal 6/6.
+Claude is optional — the default composer needs no API key and costs nothing.
+[`assistant/`](backend/src/main/java/com/bienvenueblainville/assistant),
+[measurements](docs/verification/assistant-results.md)
+
 **Translation is a table, not a resource bundle.** `sorting_item_translation`
 and `sorting_item_keyword` hold the three languages and their search terms, so
 an admin can add a material in FR/EN/ZH without a redeploy, and search matches
@@ -76,6 +91,12 @@ on every write, and a 401/403 mix-up that would have silently broken
 session-expiry handling in the browser. Full transcripts:
 [`docs/verification/verification-log.md`](docs/verification/verification-log.md).
 
+The assistant went the same way. It scored 12/12 on retrieval and 5/6 on
+refusals before a question about the mayor's phone number came back answered
+— with household-waste advice, on the strength of the single French word
+`est`. Numbers, transcripts and the fixes:
+[`docs/verification/assistant-results.md`](docs/verification/assistant-results.md).
+
 The same approach is how the Redis cache was validated: not "it compiles",
 but 603 MySQL queries dropping to 1, and `redis-cli SHUTDOWN` under a live
 server to see what actually happens — which is what turned up a 4-second
@@ -94,6 +115,10 @@ requests. Method, numbers, and honest caveats:
 <td><img src="docs/verification/screenshots/02-sorting-search.png" width="380" alt="Sorting guide page mid-search, with seasonal reminder cards" /><br />Sorting guide — live search</td>
 </tr>
 <tr>
+<td><img src="docs/verification/screenshots/10-assistant-fr.png" width="380" alt="Sorting assistant answering a French question, showing the guide entry the answer came from" /><br />Assistant — grounded, with sources</td>
+<td><img src="docs/verification/screenshots/11-assistant-refusal.png" width="380" alt="Sorting assistant refusing a question the guide does not cover, styled differently from an answer" /><br />Assistant — refusing, and looking like it</td>
+</tr>
+<tr>
 <td><img src="docs/verification/screenshots/05-home-logged-in-resident.png" width="380" alt="Home page after logging in through the real login form" /><br />Logged in as a resident</td>
 <td><img src="docs/verification/screenshots/09-admin-dashboard.png" width="380" alt="Admin dashboard showing real collection schedule, sorting item, and notice data from the backend" /><br />Admin dashboard — real CRUD data</td>
 </tr>
@@ -105,7 +130,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-26 tests: 14 unit, 12 integration.
+49 tests: 30 unit, 19 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -116,6 +141,11 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `SpecialNoticeServiceTest` | 1 | notice visibility |
 | `AuthenticationFlowIntegrationTest` | 7 | full context, real MySQL, real filter chain |
 | `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
+| `AssistantIntegrationTest` | 7 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, rate limit |
+| `QueryNormalizerTest` | 6 | stopword stripping, accent folding, per-language rules |
+| `SortingGuideRetrieverTest` | 4 | relevance cutoff, parser selection, empty-query short circuit |
+| `AssistantServiceTest` | 3 | the refusal rule: no context means no model call |
+| `TemplateAnswerComposerTest` | 3 | trilingual answer wording |
 
 Unit tests need nothing but the JVM:
 

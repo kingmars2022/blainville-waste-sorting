@@ -2,9 +2,40 @@
 import { computed, ref } from "vue";
 import { useI18n } from "../useI18n";
 import { sortingGuide, type DestinationType } from "../data/sortingGuide";
+import { askAssistant, type AssistantAnswer } from "../api/assistant";
+import { ApiError } from "../api/client";
 
 const { language, t } = useI18n();
 const query = ref("");
+
+const assistantQuestion = ref("");
+const assistantAnswer = ref<AssistantAnswer | null>(null);
+const assistantError = ref("");
+const assistantPending = ref(false);
+
+async function ask() {
+  const question = assistantQuestion.value.trim();
+  if (!question || assistantPending.value) {
+    return;
+  }
+
+  assistantPending.value = true;
+  assistantError.value = "";
+  assistantAnswer.value = null;
+
+  try {
+    assistantAnswer.value = await askAssistant(question, language.value);
+  } catch (error) {
+    // 429 is the endpoint's own per-IP cap and deserves its own wording -
+    // "try again in a moment" is actionable, "unavailable" is not.
+    assistantError.value =
+      error instanceof ApiError && error.status === 429
+        ? t("assistant.rateLimited")
+        : t("assistant.error");
+  } finally {
+    assistantPending.value = false;
+  }
+}
 const activeDestination = ref<DestinationType | "all">("all");
 
 const destinations: Array<DestinationType | "all"> = ["all", "organic", "recycling", "garbage", "ecocentre"];
@@ -44,6 +75,56 @@ function destinationLabel(destination: DestinationType | "all") {
 <template>
   <section class="page">
     <h1>{{ t("sorting.title") }}</h1>
+
+    <section class="assistant">
+      <h2>{{ t("assistant.title") }}</h2>
+      <p class="assistant-hint">{{ t("assistant.hint") }}</p>
+
+      <form class="assistant-form" @submit.prevent="ask">
+        <input
+          v-model="assistantQuestion"
+          class="search"
+          type="text"
+          maxlength="300"
+          :placeholder="t('assistant.placeholder')"
+        />
+        <button type="submit" :disabled="assistantPending || !assistantQuestion.trim()">
+          {{ assistantPending ? t("assistant.asking") : t("assistant.ask") }}
+        </button>
+      </form>
+
+      <p v-if="assistantError" class="assistant-error">{{ assistantError }}</p>
+
+      <article
+        v-else-if="assistantAnswer"
+        class="assistant-answer"
+        :class="{ ungrounded: !assistantAnswer.grounded }"
+      >
+        <p>{{ assistantAnswer.answer }}</p>
+
+        <!--
+          Sources are shown, not hidden behind a disclosure. An answer a
+          resident cannot trace back to the municipal guide is worth less than
+          one they can check, and showing them is also what makes a wrong
+          retrieval obvious instead of invisible.
+        -->
+        <p v-if="assistantAnswer.sources.length" class="assistant-sources">
+          <strong>{{ t("assistant.sources") }}:</strong>
+          <a
+            v-for="source in assistantAnswer.sources"
+            :key="source.itemId"
+            :href="source.sourceUrl ?? undefined"
+            target="_blank"
+            rel="noreferrer"
+          >{{ source.name }}</a>
+        </p>
+        <p v-else class="assistant-sources">{{ t("assistant.notFound") }}</p>
+
+        <p class="assistant-provider">
+          {{ t("assistant.poweredBy") }} {{ assistantAnswer.provider }}
+        </p>
+      </article>
+    </section>
 
     <section class="special-reminders">
       <h2>{{ t("sorting.specialReminders") }}</h2>
