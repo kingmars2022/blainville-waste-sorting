@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Resident photo intake for the Blainville sorting guide: a bucket residents
+  upload to directly, a function that strips metadata and resizes, and a read
+  endpoint that never exposes the original.
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: blainville-resident-photos
+  AllowedOrigin:
+    Type: String
+    Description: The site allowed to upload. Never '*' - a wildcard here lets
+      any page on the internet spend this bucket's storage.
+    Default: https://blainville.example.ca
+
+Globals:
+  Function:
+    Runtime: java21
+    Timeout: 30
+    MemorySize: 1024
+    Tracing: Active
+
+Resources:
+
+  PhotoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      # The bucket is private. Residents reach it only through presigned URLs,
+      # and readers only through the API below - there is no public read.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          # PUT only, from one origin: this exists so a browser can complete
+          # the presigned upload, not so anyone can browse the bucket.
+          - AllowedMethods: [PUT]
+            AllowedOrigins: [!Ref AllowedOrigin]
+            AllowedHeaders: ['content-type']
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          # Originals still carry the EXIF the processor strips, including the
+          # GPS coordinates of wherever the resident was standing. They are
+          # kept only long enough to reprocess after a bug, then deleted -
+          # the cheapest way to not hold someone's address is to not hold it.
+          - Id: expire-originals
+            Status: Enabled
+            Prefix: original/
+            ExpirationInDays: 7
+          - Id: expire-processed
+            Status: Enabled
+            Prefix: processed/
+            ExpirationInDays: 30
+          - Id: abort-incomplete-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            # Scoped to the input prefix. A function triggered by the prefix it
+            # writes to re-triggers itself, and bills until someone notices.
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: original/
+            Function: !GetAtt PhotoProcessorFunction.Arn
+
+  PhotoProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/target/backend-0.0.1-SNAPSHOT.jar
+      Handler: com.bienvenueblainville.photo.lambda.PhotoProcessingHandler::handleRequest
+      Policies:
+        # Read what residents upload, write only into the output prefix.
+        # Deliberately not s3:* on the bucket: the function has no reason to
+        # delete anything, and an EXIF stripper that can delete photos is a
+        # bigger blast radius than the job needs.
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:GetObject']
+              Resource: !Sub 'arn:aws:s3:::${BucketName}/original/*'
+            - Effect: Allow
+              Action: ['s3:PutObject']
+              Resource: !Sub 'arn:aws:s3:::${BucketName}/processed/*'
+
+  PhotoProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PhotoProcessorFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${BucketName}'
+      SourceAccount: !Ref AWS::AccountId
+
+  # Serving a processed photo is a bucket read with a cache header on it. It
+  # does not need the application, so API Gateway proxies S3 directly rather
+  # than waking a container to copy bytes.
+  PhotoApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      BinaryMediaTypes: ['image/jpeg']
+      DefinitionBody:
+        openapi: '3.0.1'
+        info:
+          title: Blainville resident photos
+          version: '1.0'
+        paths:
+          /photos/{photoId}:
+            get:
+              parameters:
+                - name: photoId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                    # Only the ids this application generates. Without this an
+                    # id parameter is a path into the bucket.
+                    pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              responses:
+                '200':
+                  description: The processed photo
+              x-amazon-apigateway-integration:
+                type: aws
+                httpMethod: GET
+                # The processed prefix is hard-coded here, so there is no
+                # request shape that reaches an original.
+                uri: !Sub 'arn:aws:apigateway:${AWS::Region}:s3:path/${BucketName}/processed/{photoId}'
+                credentials: !GetAtt PhotoApiRole.Arn
+                requestParameters:
+                  integration.request.path.photoId: method.request.path.photoId
+                responses:
+                  default:
+                    statusCode: '200'
+                    responseParameters:
+                      method.response.header.Content-Type: "'image/jpeg'"
+                      method.response.header.Cache-Control: "'public, max-age=86400, immutable'"
+                  '4\d{2}':
+                    statusCode: '404'
+
+  PhotoApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: read-processed-photos
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Read, processed prefix, nothing else. The gateway cannot reach
+              # an original even if a future path template is written carelessly.
+              - Effect: Allow
+                Action: ['s3:GetObject']
+                Resource: !Sub 'arn:aws:s3:::${BucketName}/processed/*'
+
+Outputs:
+  PhotoBucketName:
+    Value: !Ref PhotoBucket
+  PhotoReadEndpoint:
+    Value: !Sub 'https://${PhotoApi}.execute-api.${AWS::Region}.amazonaws.com/prod/photos/{photoId}'

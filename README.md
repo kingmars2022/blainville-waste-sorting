@@ -12,6 +12,10 @@ flowchart LR
     A -->|"cache-aside + rate limit"| R[("Redis")]
     A -->|"retrieval only"| AI["Sorting assistant<br/>RAG, FR/EN/ZH"]
     A -->|"reads run, writes wait"| AG["Admin agent<br/>plan, then approve"]
+    B["Browser"] -->|"presigned PUT"| S3[("S3<br/>original/")]
+    S3 -.->|"ObjectCreated"| L["Lambda<br/>strip EXIF, resize"]
+    L --> S3P[("S3<br/>processed/")]
+    S3P -->|"API Gateway"| B
     A -->|"same transaction"| OB[("outbox_event")]
     OB -.->|"relay, at-least-once"| K["Kafka<br/>2 consumer groups"]
     K --> AU[("Audit trail<br/>MySQL JSON or MongoDB")]
@@ -26,6 +30,7 @@ flowchart LR
 | API | Spring Boot, Java 21 |
 | Persistence | MyBatis, MySQL (9 tables), Flyway (8 migrations) |
 | Events | Transactional outbox → Kafka, two consumer groups |
+| Photos | S3 presigned upload, Lambda (EXIF strip + resize), API Gateway |
 | Audit trail | MongoDB or MySQL JSON, same interface and same tests |
 | Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
 | Assistant | Retrieval-augmented Q&A over MySQL full-text; Claude optional |
@@ -93,6 +98,20 @@ from the arguments that will actually run, not asked of the model, so it
 cannot misrepresent them.
 [`agent/`](backend/src/main/java/com/bienvenueblainville/agent),
 [what was verified](docs/verification/agent-results.md)
+
+**Resident photos never pass through the application, and the copy that is
+served has no GPS in it.** A phone photo is a few megabytes; accepting it as a
+POST means the slowest clients hold a thread the longest. So the browser gets
+a presigned URL — with the size, the type and an expiry *signed into it*, not
+merely checked before issuing it — and uploads straight to S3. An
+`ObjectCreated` event triggers a Lambda that re-encodes the image, which drops
+every EXIF segment including the GPS coordinates of whatever curb the resident
+was standing on. Only that stripped copy has a route; the original is
+unreachable and expires in 7 days. Proven against a real JPEG with a real EXIF
+GPS block, not asserted.
+[`photo/`](backend/src/main/java/com/bienvenueblainville/photo),
+[`infra/template.yaml`](infra/template.yaml),
+[what ran and what didn't](docs/verification/photo-pipeline-results.md)
 
 **Events go through an outbox, because publishing from a service method is a
 dual write.** Calling Kafka inside `createNotice` means the database commit and
@@ -189,7 +208,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-84 tests: 46 unit, 38 integration.
+96 tests: 51 unit, 45 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -203,6 +222,8 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `AssistantIntegrationTest` | 8 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, real-Redis quota |
 | `AdminAgentIntegrationTest` | 7 | real writes, single-use plans, plan ownership, validation, RBAC |
 | `NoticeEventPipelineIntegrationTest` | 5 | outbox commits with the write, relay, two consumer groups, replay safety |
+| `PhotoPipelineIntegrationTest` | 7 | real S3: presign, upload, Lambda, prefix isolation, path validation |
+| `PhotoProcessorTest` | 5 | EXIF GPS stripped, including when no resize is needed |
 | `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
 | `AdminAgentServiceTest` | 4 | writes recorded not executed, reads executed, turn ceiling |
 | `StepSummariserTest` | 4 | the confirmation line, including missing arguments |

@@ -84,6 +84,15 @@ app:
     enabled: ${EVENTS_ENABLED:true}
     relay:
       interval-ms: ${EVENTS_RELAY_INTERVAL_MS:1000}
+  photo:
+    # Resident photo uploads. Credentials come from the AWS default chain -
+    # environment, container role, instance profile - so no key is configured
+    # here or committed. Set an endpoint to point at a local S3 for tests.
+    bucket: ${PHOTO_BUCKET:blainville-resident-photos}
+    region: ${AWS_REGION:ca-central-1}
+    endpoint: ${S3_ENDPOINT:}
+    upload-ttl: ${PHOTO_UPLOAD_TTL:300}
+    max-upload-bytes: ${PHOTO_MAX_BYTES:10000000}
   collection:
     put-out-after: "20:00"
     put-out-before: "06:00"

@@ -50,6 +50,14 @@ public class SecurityConfig {
                         // endpoint that can cost money per call - see
                         // AssistantRateLimiter for what stands in for auth here.
                         .requestMatchers(HttpMethod.POST, "/api/assistant/ask").permitAll()
+                        // Photo upload and retrieval are public like the rest
+                        // of the sorting guide. The upload endpoint issues a
+                        // presigned URL rather than accepting bytes, and shares
+                        // the assistant's per-IP quota because each signature
+                        // it hands out is storage someone pays for. Only the
+                        // processed copy is readable - see PhotoController.
+                        .requestMatchers(HttpMethod.POST, "/api/photos/upload-url").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/photos/*").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
