@@ -372,13 +372,19 @@ The two reads on the critical path of every page load — the upcoming collectio
 
 Redis rather than an in-process cache (Caffeine) because the interesting property is that the cache is *shared*: two backend instances behind a load balancer see the same cached schedule and the same eviction, so an admin edit is visible everywhere immediately rather than on each instance's own TTL. That matters more here than raw lookup speed.
 
-The cache is deliberately optional. It is a read cache in front of MySQL, never a source of truth, so the design constraint was that losing Redis must degrade the site to "slower", not to "down". `CACHE_TYPE=none` runs the entire stack without Redis at all. See [`verification/redis-cache-results.md`](verification/redis-cache-results.md) for what this bought (603 MySQL `SELECT`s → 1 across 300 concurrent page loads) and what it cost when Redis was deliberately killed mid-run.
+The read cache is deliberately optional: it sits in front of MySQL and is never a source of truth, so losing it must degrade the site to "slower", not to "down". `CACHE_TYPE=none` disables it entirely.
+
+The assistant's per-IP quota lives in the same Redis and does **not** follow that switch - an earlier version of this document claimed `CACHE_TYPE=none` ran the whole stack without Redis, which was simply untrue. What the quota does when Redis is unreachable now depends on what it is protecting: with Claude configured, an uncountable quota means uncapped spending, so the request is refused; with the default template composer nothing is bought, so it is served. Two policies, same Redis, chosen by what is at stake.
+
+See [`verification/redis-cache-results.md`](verification/redis-cache-results.md) for the cache measurements and [`review-2026-09-19.md`](review-2026-09-19.md) for the review that found this.
 
 ### Why retrieval-augmented, and not just a chatbot
 
 The sorting guide is the kind of thing residents ask in their own words ("la boîte à pizza grasse", "废电池") and the kind of thing an app answers badly with exact-match search. A language model is the obvious fit for the wording - and the worst possible fit for the facts, because the failure mode is a fluent wrong answer about which bin something goes in, and the resident has no way to tell.
 
-So the model is never asked what the rule is. Retrieval finds the guide entries from MySQL; the model is handed those entries and asked to phrase them. If retrieval finds nothing, `AssistantService` refuses without calling a model at all - the grounding rule lives above the composer, so it cannot be prompted away or lost when the composer is swapped.
+So the model is never asked what the rule is. Retrieval finds the guide entries from MySQL; the composer is handed those entries and asked to phrase them. If retrieval finds nothing, `AssistantService` refuses without calling a model at all - the rule lives above the composer, so it cannot be prompted away or lost when the composer is swapped.
+
+It is worth being precise about what that guarantees, because the obvious reading is stronger than the truth. It enforces a non-empty-context requirement, not correctness. The relevance cutoff is relative, so the best positive match always survives it - retrieval can hand over an entry that does not actually answer the question. And the Claude composer returns free text; the prompt asks it to stay within the entries, but nothing mechanically enforces that. The template composer avoids generated claims entirely, and can still quote the wrong entry.
 
 The same reasoning decides the default: the `template` composer answers from the retrieved entry with no model involved. It is not a stub. Retrieval has already done the hard part, and reading the entry back in the resident's language is genuinely useful - so a fresh clone with no API key gets a working feature, CI gets something deterministic to assert on, and the Claude-backed composer has a baseline to be measured against rather than merely assumed better than.
 
@@ -488,9 +494,8 @@ mysql
 redis
   Redis 7 cache container.
   Exposes container port 6379 on host port 6379 by default.
-  Runs with persistence off and a 128 MB allkeys-lru cap: everything in it is
-  rebuildable from MySQL, so it must never be what fills the disk or the host's
-  memory.
+  Runs with persistence off and a 128 MB noeviction cap. Quota counters share
+  the instance with caches and must not be evicted. Restarting resets quotas.
 
 backend
   Spring Boot application container.
@@ -631,7 +636,7 @@ ANTHROPIC_API_KEY   # only read when provider=anthropic; never commit a real key
 ASSISTANT_RATE_LIMIT # default: 30 questions per IP per hour
 REDIS_HOST       # default: localhost
 REDIS_PORT       # default: 6379
-CACHE_TYPE       # default: redis; set to `none` to run without Redis entirely
+CACHE_TYPE       # default: redis; `none` disables caching, not assistant quotas
 ```
 
 `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` seed the first `ADMIN` account on startup, if no `ADMIN` account exists yet.

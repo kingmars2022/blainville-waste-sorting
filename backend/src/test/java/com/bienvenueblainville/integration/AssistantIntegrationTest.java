@@ -129,6 +129,24 @@ class AssistantIntegrationTest {
     }
 
     @Test
+    void theQuotaCounterIsInstalledWithAnExpiryByRealRedis() throws Exception {
+        // The quota is counted by a Lua script, so that it increments and
+        // installs the expiry atomically - a separate INCR and EXPIRE can be
+        // interrupted between the two and leave a key that never expires,
+        // permanently locking out an address. Unit tests mock the Redis
+        // template and cannot show the script runs at all, let alone that the
+        // TTL lands.
+        ask("Where does soiled cardboard go?", "en");
+
+        Set<String> keys = redis.keys("assistant:ratelimit:*");
+        assertThat(keys).hasSize(1);
+
+        String key = keys.iterator().next();
+        assertThat(redis.opsForValue().get(key)).isEqualTo("1");
+        assertThat(redis.getExpire(key)).isGreaterThan(0L);
+    }
+
+    @Test
     void capsHowManyQuestionsOneAddressCanAsk() throws Exception {
         for (int i = 0; i < RATE_LIMIT; i++) {
             ask("Where does soiled cardboard go?", "en");

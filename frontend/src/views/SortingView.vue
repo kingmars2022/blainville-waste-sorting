@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "../useI18n";
 import { sortingGuide, type DestinationType } from "../data/sortingGuide";
 import { askAssistant, type AssistantAnswer } from "../api/assistant";
@@ -12,6 +12,14 @@ const assistantQuestion = ref("");
 const assistantAnswer = ref<AssistantAnswer | null>(null);
 const assistantError = ref("");
 const assistantPending = ref(false);
+let requestVersion = 0;
+
+watch(language, () => {
+  requestVersion++;
+  assistantAnswer.value = null;
+  assistantError.value = "";
+  assistantPending.value = false;
+}, { flush: "sync" });
 
 async function ask() {
   const question = assistantQuestion.value.trim();
@@ -22,10 +30,13 @@ async function ask() {
   assistantPending.value = true;
   assistantError.value = "";
   assistantAnswer.value = null;
+  const version = ++requestVersion;
 
   try {
-    assistantAnswer.value = await askAssistant(question, language.value);
+    const answer = await askAssistant(question, language.value);
+    if (version === requestVersion) assistantAnswer.value = answer;
   } catch (error) {
+    if (version !== requestVersion) return;
     // 429 is the endpoint's own per-IP cap and deserves its own wording -
     // "try again in a moment" is actionable, "unavailable" is not.
     assistantError.value =
@@ -33,7 +44,7 @@ async function ask() {
         ? t("assistant.rateLimited")
         : t("assistant.error");
   } finally {
-    assistantPending.value = false;
+    if (version === requestVersion) assistantPending.value = false;
   }
 }
 const activeDestination = ref<DestinationType | "all">("all");

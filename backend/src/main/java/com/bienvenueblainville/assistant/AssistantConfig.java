@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import java.time.Duration;
 
 import java.util.Optional;
 
@@ -40,6 +41,13 @@ public class AssistantConfig {
         }
 
         log.info("Assistant provider: Claude ({})", properties.model());
-        return new ClaudeAnswerComposer(client.get(), properties.model(), template);
+        // A resident is waiting on this request, and a slow answer is worse
+        // than the template's instant one - so this caller gets a short
+        // deadline and no retries, while the admin agent keeps the provider's
+        // longer default for its multi-turn planning loop.
+        AnthropicClient impatient = client.get().withOptions(options -> options
+                .timeout(Duration.ofSeconds(15))
+                .maxRetries(0));
+        return new ClaudeAnswerComposer(impatient, properties.model(), template);
     }
 }

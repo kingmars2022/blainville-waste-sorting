@@ -20,4 +20,22 @@ public interface AnswerComposer {
      * @param context guaranteed non-empty; the refusal path never reaches here
      */
     String compose(AssistantQuestion question, List<RetrievedItem> context);
+
+    /**
+     * Whether answering through this composer can cost money.
+     *
+     * <p>Read by {@link AssistantRateLimiter} to decide what to do when the
+     * quota cannot be counted at all: a budget that cannot be metered must not
+     * be spent, while a composer that spends nothing has no budget to protect.
+     */
+    default boolean costsMoney() {
+        return false;
+    }
+
+    default Composition composeWithMetadata(AssistantQuestion question, List<RetrievedItem> context) {
+        return new Composition(compose(question, context), providerName());
+    }
+
+    record Composition(String text, String provider) {
+    }
 }

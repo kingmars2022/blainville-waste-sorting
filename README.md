@@ -13,7 +13,7 @@ flowchart LR
     A -->|"retrieval only"| AI["Sorting assistant<br/>RAG, FR/EN/ZH"]
     A -->|"reads run, writes wait"| AG["Admin agent<br/>plan, then approve"]
     A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
-    FW["Flyway V1-V6"] -.->|"migrates on startup"| D
+    FW["Flyway V1-V7"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
 ```
 
@@ -21,7 +21,7 @@ flowchart LR
 |---|---|
 | Frontend | Vue 3, TypeScript, Pinia, Vite |
 | API | Spring Boot, Java 21 |
-| Persistence | MyBatis, MySQL (7 tables), Flyway (6 migrations) |
+| Persistence | MyBatis, MySQL (7 tables), Flyway (7 migrations) |
 | Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
 | Assistant | Retrieval-augmented Q&A over MySQL full-text; Claude optional |
 | Admin agent | Claude tool-use with a human approval step; plans held in Redis |
@@ -55,16 +55,25 @@ costs 0.01s instead of 4.0s.
 [`config/CacheConfig.java`](backend/src/main/java/com/bienvenueblainville/config/CacheConfig.java),
 [measurements](docs/verification/redis-cache-results.md)
 
-**The sorting assistant refuses when it doesn't know.** Residents ask in
-their own words, in any of the three languages, and the answer is retrieved
-from the municipal guide in MySQL — never generated from a model's memory.
-Grounding is enforced above the model: no retrieved context, no model call at
-all. Getting there needed two full-text parsers (ngram is the only one that
-can tokenize Chinese, and the only one loose enough to make a French refusal
-impossible) and an application-side stopword list (InnoDB's is English-only,
-so a stray `est` once made it answer a question about the mayor's phone number
-with bin advice). Scored over 18 questions: precision@1 12/12, refusal 6/6.
-Claude is optional — the default composer needs no API key and costs nothing.
+**The sorting assistant answers only from the guide, and calls no model when
+it finds nothing.** Residents ask in their own words in any of the three
+languages; the answer is built from entries retrieved out of the MySQL guide,
+and the refusal path never reaches a model at all. Getting retrieval to work
+needed two full-text parsers — ngram is the only one that can tokenize
+Chinese, and the only one loose enough to make a French refusal impossible —
+plus an application-side stopword list, because InnoDB's is English-only and a
+stray `est` once made it answer a question about the mayor's phone number with
+bin advice.
+
+What that does and does not buy is worth being exact about, because it is easy
+to oversell. Non-empty retrieval is not proof of relevance: the relevance
+cutoff is relative, so the best positive match always survives it, and
+`grounded=true` means context was supplied rather than that the answer was
+checked. The 12/12 precision and 6/6 refusal figures come from an 18-question
+set that was also used while tuning the stopword list — a development result,
+not a held-out estimate. Claude's live API path has never been exercised
+against the real API. Claude is optional either way: the default composer
+needs no key and costs nothing.
 [`assistant/`](backend/src/main/java/com/bienvenueblainville/assistant),
 [measurements](docs/verification/assistant-results.md)
 
@@ -155,7 +164,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-64 tests: 38 unit, 26 integration.
+71 tests: 44 unit, 27 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -166,7 +175,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `SpecialNoticeServiceTest` | 1 | notice visibility |
 | `AuthenticationFlowIntegrationTest` | 7 | full context, real MySQL, real filter chain |
 | `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
-| `AssistantIntegrationTest` | 7 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, rate limit |
+| `AssistantIntegrationTest` | 8 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, real-Redis quota |
 | `AdminAgentIntegrationTest` | 7 | real writes, single-use plans, plan ownership, validation, RBAC |
 | `AdminAgentServiceTest` | 4 | writes recorded not executed, reads executed, turn ceiling |
 | `StepSummariserTest` | 4 | the confirmation line, including missing arguments |
@@ -174,12 +183,18 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `SortingGuideRetrieverTest` | 4 | relevance cutoff, parser selection, empty-query short circuit |
 | `AssistantServiceTest` | 3 | the refusal rule: no context means no model call |
 | `TemplateAnswerComposerTest` | 3 | trilingual answer wording |
+| `AssistantRateLimiterTest` | 5 | quota boundary, missing counter, and the failure policy in each mode |
+| `ClaudeAnswerComposerTest` | 1 | template provider attribution after API failure |
 
 Unit tests need nothing but the JVM:
 
 ```bash
 cd backend && mvn test
 ```
+
+Use Java 21, as in CI and Docker. On macOS, select it with
+`export JAVA_HOME=$(/usr/libexec/java_home -v 21)` before running Maven.
+The current Mockito dependency does not support the locally installed Java 25.
 
 Integration tests are opt-in locally because they need a database and a Redis
 (CI always runs them). With the default `.env.example` values copied into
@@ -196,12 +211,32 @@ cd backend && mvn test -Pintegration-test
 ```bash
 cp .env.example .env          # set DB_URL, DB_USERNAME, DB_PASSWORD,
                               # APP_JWT_SECRET, APP_ADMIN_EMAIL, APP_ADMIN_PASSWORD
-docker compose up -d          # MySQL + Redis + backend; Flyway migrates V1-V6 on startup
-                              # (CACHE_TYPE=none runs the whole stack without Redis)
+docker compose up -d --build  # MySQL + Redis + backend; Flyway migrates V1-V7
 cd frontend && npm ci && npm run dev
 ```
 
 Frontend on `http://localhost:5173`, API on `http://localhost:8080`.
+
+`CACHE_TYPE=none` turns off read caching only; Compose still starts Redis,
+because the assistant counts its per-IP quota there. When Redis is
+*unreachable*, what happens depends on what is at stake: with Claude
+configured, an uncountable quota means uncapped spending, so the assistant
+returns 503; with the default template composer nothing is bought per request,
+so it serves anyway. The quota itself is enforced in both modes whenever Redis
+answers.
+
+Two things that a per-IP quota is not: a global spending limit (many addresses,
+many hours) and proxy-aware (it keys on `getRemoteAddr()`, so a reverse proxy
+needs a trusted-proxy boundary configured before deployment). Set spending
+controls at the provider before exposing a paid composer publicly.
+
+One known inconsistency: the resident sorting cards still render
+`frontend/src/data/sortingGuide.ts`, while the assistant and the admin console
+read MySQL — so an admin edit does not change those cards. Unifying the two is
+outstanding work.
+
+[The September 19 review](docs/review-2026-09-19.md) has the rest: fixes,
+remaining limitations, and an assessment of the infrastructure still proposed.
 
 ## More detail
 
