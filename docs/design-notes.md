@@ -183,6 +183,33 @@ Examples:
 
 The four cards across the top of the sorting page screenshot above (Encombrants, Branches, Sapins de Noel, Dechiquetage de documents personnels) are exactly these reminders, rendered live from the `special` sorting items in `sorting_item`/`sorting_item_translation`.
 
+### Notice Inbox
+
+When an administrator publishes a notice, it does not only appear on the
+public page: every resident who has reminders switched on gets a row in their
+inbox, and the home page shows the unread ones.
+
+The fan-out does not happen in the request that publishes the notice. The
+event is written to `outbox_event` in the same transaction as the notice, a
+relay drains it to Kafka, and the inbox consumer does the fan-out as a single
+`insert ignore ... select` over `user_preference`. If the broker is down the
+notice still publishes and the event waits on the table; if the event is
+delivered twice, the second fan-out inserts nothing.
+
+### Question Gap Report
+
+Every question a resident asks - typed or from a photo - is logged
+anonymously through the same Kafka topic into MongoDB: the language, the
+search terms, and whether the guide had an answer. No IP, no account, no
+question text tied to a person.
+
+`GET /api/admin/insights/gaps` then answers the question an administrator
+actually has: *which things are residents asking about that the guide cannot answer
+yet?* That is an aggregation over the terms that produced a refusal, and it
+turns "we should expand the sorting guide" into a ranked list of what to add
+first. Answers served from the cache are counted too - they are the questions
+being asked most, and leaving them out would hide exactly the wrong ones.
+
 ### Location and Address Guidance
 
 Sorting entries can include a location field. This is used for records where the user needs to know whether to place an item at the curb, at the edge of the driveway, or bring it to a facility.
@@ -304,7 +331,19 @@ The backend `PUT /{id}` endpoints for schedule and sorting items work, but the a
 
 ### Caching
 
-- Redis 7 (via Spring Cache / Lettuce)
+- Redis 7 (via Spring Cache / Lettuce), for the two hot public reads, the
+  assistant's per-IP quota, the admin agent's pending plans, and the answer
+  cache that stops the same question being paid for twice
+
+### Events
+
+- Kafka, fed by a transactional outbox rather than by the request thread
+- Two consumer groups on one topic: the resident inbox and the audit trail
+
+### Document store
+
+- MongoDB, for the audit trail and for resident query analytics - aggregation
+  pipelines and a TTL index, neither of which MySQL does as naturally
 
 ### Assistant
 
@@ -337,6 +376,9 @@ The project uses a separated frontend and backend architecture:
 ```text
 Browser
   |
+  |  photo bytes go straight to S3 on a presigned URL,
+  |  never through the application
+  |
   v
 Vue 3 Single-Page Application
   |
@@ -344,10 +386,29 @@ Vue 3 Single-Page Application
   v
 Spring Boot REST API
   |
-  | MyBatis mapper layer
-  v
-MySQL Database
+  |-- MyBatis mapper layer -----> MySQL          schedules, sorting guide,
+  |                                              users, notices, outbox
+  |
+  |-- Spring Cache (Lettuce) ---> Redis          hot reads, assistant quota,
+  |                                              agent plans, answer cache
+  |
+  |-- outbox relay -------------> Kafka: blainville.notice.events
+  |     (drains outbox_event)         |-> inbox consumer -> MySQL
+  |                                   `-> audit consumer -> MongoDB
+  |
+  |-- query publisher ----------> Kafka: blainville.resident.queries
+  |     (fire and forget)             `-> query-log consumer -> MongoDB
+  |
+  `-- AWS SDK ------------------> S3
+                                    `-> Lambda: strip EXIF, resize
+                                        -> processed copy, served
+                                           through API Gateway
 ```
+
+Everything past MySQL is optional at runtime and degrades rather than fails: a
+dead Redis falls through to the database, `EVENTS_ENABLED=false` leaves events
+on the outbox table instead of losing them, and the audit trail has a MySQL
+implementation behind the same interface as the MongoDB one.
 
 The local Docker architecture is:
 
@@ -429,6 +490,73 @@ It is the only route that can spend money per request, and it is unauthenticated
 
 Worth noting what the limiter does when Redis is gone: it returns 503, while the cache in the same Redis carries on serving from MySQL. Opposite policies on purpose - the cache protects latency, so losing it should cost speed and never availability; the limiter protects a budget, so losing it must not quietly remove the only spending cap.
 
+### Why the collection calendar is rules, not rows
+
+It used to be rows: a hand-written list of dates ending on 2026-10-29. On the
+30th the home page would have told every resident there was no collection -
+silently, correctly according to the data, and wrong. Nothing in the test
+suite asked what the calendar looks like from a future date, so nothing would
+have caught it.
+
+The patterns behind those rows are three lines of data, so `V12` stores the
+patterns and `CollectionCalendarTopUp` materializes them out to a rolling
+horizon on startup and daily after that.
+
+Occurrences stay real rows rather than being computed per request, because the
+admin console, the admin agent and holiday exceptions all edit individual
+collections - a calendar computed on the fly would have nothing to edit. That
+raises the obvious question of what stops generation from undoing an
+administrator's deletion, and the answer is a high-water mark per rule:
+generation only ever happens strictly after it, so a cancelled holiday stays
+cancelled. A unique key on (date, sector, type) makes a repeated run a no-op
+on top of that.
+
+### Why an outbox rather than publishing from the request
+
+A notice is published when the row is committed, not when Kafka acknowledges
+it. Publishing inside the request handler means either the broker being down
+takes the write down with it, or the write succeeds and the event is lost -
+and which of the two happened is invisible afterwards.
+
+So the event is inserted in the same transaction as the notice, by
+`OutboxRecorder`, and a relay drains the table to Kafka afterwards. The write
+path never touches the broker. Delivery is therefore at-least-once, which is
+why both consumers on that topic are idempotent: the inbox fan-out is a
+single `insert ignore ... select`, and the audit store upserts on the event
+id.
+
+`EVENTS_ENABLED=false` turns off the relay and the consumers only. The outbox
+keeps recording either way, because a deployment without Kafka should keep its
+events on the table rather than drop them.
+
+### Why MongoDB in a project that already has MySQL
+
+Adding a second database to a working relational schema needs a better reason
+than the name on a CV, so the audit trail was implemented twice - `AuditStore`
+has a MongoDB implementation and a MySQL JSON one, and the same contract test
+runs against both. Either can be selected with `AUDIT_STORE`.
+
+What MongoDB earns is the other half: the resident query analytics. The
+question "which questions are residents asking that the guide cannot answer"
+is an aggregation pipeline over a schemaless event, and the retention rule is
+a TTL index rather than a scheduled delete job. Both are one line there and a
+job plus a schema migration in MySQL.
+
+The honest summary is that the audit trail does not need MongoDB and the gap
+report is more natural in it.
+
+### Why photo bytes never pass through the application
+
+The browser uploads to S3 on a presigned URL. The size and content type are
+signed into the URL rather than merely checked on arrival, so an oversized
+file is rejected by S3 before a byte reaches anything this project runs.
+
+Stripping EXIF is not optional: a photo of a bin on a driveway carries the GPS
+coordinates of the house. A Lambda triggered by the object creation re-encodes
+the image, which drops the metadata as a side effect of the format rather than
+relying on a list of tags to remove, and writes the result under a different
+prefix. Only that prefix is ever served.
+
 ### Why Docker Compose
 
 Docker Compose reduces setup friction for the backend environment. Instead of requiring every developer to configure MySQL manually, Compose starts a known MySQL version and the Spring Boot backend together.
@@ -460,9 +588,33 @@ sorting_item_translation
 sorting_item_keyword
   Stores searchable keywords by language.
 
+sorting_item_example
+  Stores the short per-language examples shown under each sorting card,
+  ordered. A table rather than a delimited column because they are ordered,
+  per language, and edited one at a time.
+
+collection_schedule_rule
+  Stores the recurring collection patterns - anchor date, interval, and the
+  high-water mark of what has already been materialized into collection_event.
+
 special_notice
   Stores temporary announcements such as holiday changes, service delays, or seasonal notices.
+
+outbox_event
+  Stores domain events written in the same transaction as the notice they
+  describe, drained to Kafka by a relay afterwards.
+
+resident_notification
+  Stores the per-resident inbox rows fanned out by the notice consumer.
+
+audit_record
+  Stores the audit trail when AUDIT_STORE=mysql; the same contract is served
+  by MongoDB when it is set to mongodb.
 ```
+
+MongoDB holds two collections, neither of which is a system of record:
+`audit_records` (when selected) and `resident_queries` - the anonymous question
+log behind the gap report, kept for 180 days by a TTL index.
 
 Flyway migrations are stored in:
 
@@ -470,7 +622,12 @@ Flyway migrations are stored in:
 backend/src/main/resources/db/migration/
 ```
 
-The current migration set (`V1`–`V6`) includes initial schema creation, seed collection data, expanded sorting records, seasonal special collection records, location fields, and an extended collection calendar seed.
+The current migration set is `V1`–`V12`: initial schema and seed data
+(`V1`–`V5`), an extended collection calendar seed (`V6`), full-text indexes
+with two parsers (`V7`), the notice outbox (`V8`), the resident inbox (`V9`),
+the sorting guide's move to a single source with its examples and seasonal
+wording (`V10`–`V11`), and the collection schedule rules that replaced the
+hand-written calendar rows (`V12`).
 
 ## Internationalization
 
@@ -503,7 +660,7 @@ The admin UI itself currently exposes create/list/delete for schedule and sortin
 
 The project uses a hybrid development strategy:
 
-- Docker Compose runs MySQL, Redis, and the Spring Boot backend.
+- Docker Compose runs MySQL, Redis, Kafka, MongoDB, and the Spring Boot backend.
 - The Vue frontend runs locally with Vite.
 
 This keeps the backend environment reproducible without slowing down frontend development.
@@ -522,10 +679,20 @@ redis
   Runs with persistence off and a 128 MB noeviction cap. Quota counters share
   the instance with caches and must not be evicted. Restarting resets quotas.
 
+kafka
+  Apache Kafka 3.8 in KRaft mode - one broker that is also its own
+  controller, which is the right size for a single-machine stack and means
+  no ZooKeeper. Exposes 9092. Topics are auto-created.
+
+mongo
+  MongoDB 7 container for the audit trail and the resident query log.
+  Exposes 27017 and stores data in a named volume.
+
 backend
   Spring Boot application container.
   Builds from backend/Dockerfile.
-  Connects to the MySQL and Redis services through the Docker network.
+  Connects to the MySQL, Redis, Kafka and MongoDB services through the
+  Docker network.
   Exposes port 8080.
 ```
 
@@ -662,7 +829,21 @@ ASSISTANT_RATE_LIMIT # default: 30 questions per IP per hour
 REDIS_HOST       # default: localhost
 REDIS_PORT       # default: 6379
 CACHE_TYPE       # default: redis; `none` disables caching, not assistant quotas
+EVENTS_ENABLED   # default: true; false keeps recording to the outbox, stops the relay
+KAFKA_BOOTSTRAP_SERVERS # default: localhost:9092
+AUDIT_STORE      # default: mysql; `mongodb` selects the document implementation
+MONGODB_URI      # default: mongodb://localhost:27017/bienvenue_blainville
+PHOTO_BUCKET     # default: blainville-resident-photos
+AWS_REGION       # default: ca-central-1
+S3_ENDPOINT      # empty for real S3; set to point at a local S3 in tests
+PHOTO_MAX_BYTES  # default: 10000000, signed into the presigned URL
+COLLECTION_CALENDAR_HORIZON_DAYS # default: 180
+COLLECTION_CALENDAR_TOP_UP       # default: true; false freezes the calendar
 ```
+
+AWS credentials are deliberately absent from this list. The SDK reads its
+default chain - environment, container role, instance profile - so a clone has
+nothing to leak and a deployment supplies them.
 
 `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` seed the first `ADMIN` account on startup, if no `ADMIN` account exists yet.
 
@@ -759,7 +940,8 @@ Completed:
 - Admin CRUD for collection schedules, sorting items (with required French/English/Chinese translations, locations, and keywords), and special notices, wired end to end from the admin UI through MyBatis to `collection_event`, `sorting_item`/`sorting_item_translation`/`sorting_item_keyword`, and `special_notice`.
 - `HomeView` calls `GET /api/collections/upcoming` for the signed-in resident's sector and shows the real next collection (today/tomorrow framing, put-out/bring-back guidance) plus a short list of upcoming collections, instead of static sample data.
 - MyBatis mapper foundation and a normalized 7-table MySQL schema.
-- Flyway migrations for schema and seed data, including a rolling collection calendar seed (`V6`) so the home page has real upcoming dates to show.
+- Flyway migrations for schema and seed data (`V1`-`V12`).
+- A collection calendar that extends itself. The recurring patterns live in `collection_schedule_rule` and are materialized out to a rolling 180-day horizon on startup and daily, so the calendar cannot quietly run out the way the hand-written `V6` rows were going to on 2026-10-30. Generation never crosses a rule's high-water mark, so an administrator's cancellation is not undone overnight.
 - The sorting guide served from MySQL to residents, the assistant, the photo lookup and the admin console alike (`GET /api/sorting-items`). It previously existed twice - a TypeScript file for the resident cards and the database for everything else - so an admin edit changed one and not the other. Migrations V10/V11 carried the two fields only the static copy had (`examples`, seasonal `availability`) and merged a duplicate entry.
 - Seasonal and special collection reminder data.
 - Location and address support for special sorting records.
@@ -767,10 +949,15 @@ Completed:
 - An admin agent (`POST /api/admin/agent/plan`, `POST /api/admin/agent/plans/{id}/execute`): Claude tool use over the existing collection and notice services, where read tools execute during planning and write tools are recorded as a plan for a human to approve. Plans live in Redis for 15 minutes, are single-use, and are bound to the administrator they were shown to. Returns 503 with an explanation when no API key is configured.
 - A grounded trilingual sorting assistant (`POST /api/assistant/ask`): MySQL full-text retrieval over `sorting_item_translation`/`sorting_item_keyword` with two parsers (word for French/English, ngram for Chinese), an application-side stopword filter, an explicit refusal when nothing relevant is retrieved, per-IP rate limiting in Redis, and a pluggable composer that is either a no-cost template or Claude. Scored 12/12 precision@1 and 6/6 refusal accuracy over an 18-question set.
 - Redis cache-aside layer over the two hot public reads (`@Cacheable` on the upcoming schedule and the active notices, keyed by day so nothing goes stale at midnight), with `@CacheEvict` on every admin write, a `CacheErrorHandler` that degrades to MySQL instead of failing the request, and fail-fast Lettuce options so a dead Redis costs milliseconds rather than seconds. Fully optional at runtime via `CACHE_TYPE=none`.
+- Resident photo questions (`POST /api/photos/upload-url`, `POST /api/photos/{id}/identify`): the browser uploads straight to S3 on a presigned URL with the size and content type signed in, a Lambda strips EXIF and resizes on object creation, and only the processed copy is ever served. Claude vision names the object; the sorting guide, not the model, decides the bin.
+- A transactional outbox and Kafka pipeline for notices: the event is written in the same transaction as the notice, a relay drains it to the broker, and two consumer groups read one topic - the resident inbox fan-out and the audit trail. Delivery is at-least-once and both consumers are idempotent. `EVENTS_ENABLED=false` stops the relay without stopping the recording.
+- An audit trail implemented twice behind one interface (`AuditStore`), over MongoDB and over a MySQL JSON column, with a single contract test run against both and `AUDIT_STORE` selecting which runs.
+- Resident query analytics in MongoDB: every question is logged anonymously through Kafka, and `GET /api/admin/insights/gaps` reports the terms residents ask that the guide cannot answer - a gap report to drive what gets added next. Retention is a TTL index, not a delete job.
+- An answer cache for the assistant, so the same question is not paid for twice. Cache hits are still recorded in the analytics, or the gap report would under-count the very questions that are asked most.
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- Unit tests for the JWT service, auth service, and collection service (`mvn test`).
+- 133 tests: 70 that need nothing but the JVM and 63 that run against real infrastructure.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -880,20 +1067,22 @@ This project is not an official municipal website.
 
 Current limitations:
 
-- The sorting data is an initial structured seed, not a complete official import, and it is still served from a static frontend dataset rather than the `sorting_item` tables.
-- The collection calendar seed (`V6__extend_collection_calendar_seed.sql`) is an illustrative recurring pattern covering September–October 2026, not the full official yearly calendar; it will need periodic extension (or a real calendar import) to keep showing upcoming dates.
-- The admin UI's schedule and sorting item panels only wire up create/list/delete — the backend `PUT /{id}` endpoints support full updates, but there's no edit form in the browser yet.
-- The integration test suite requires a developer-provisioned local MySQL matching `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`; it isn't wired into CI yet and doesn't use an ephemeral/containerized database.
+- The sorting data is an initial structured seed, not a complete official import. It is served from the `sorting_item` tables to residents, the assistant, the photo lookup and the admin console alike - the static frontend copy was removed in `V10`/`V11`.
+- The collection patterns in `collection_schedule_rule` are an illustrative weekly/biweekly schedule, not the official municipal calendar. The calendar no longer expires, but what it generates is still a plausible pattern rather than imported truth, and real holiday shifts are not in it.
+- The admin UI's schedule and sorting item panels only wire up create/list/delete. The backend `PUT /{id}` endpoints support full updates - including the examples and seasonal wording added in `V10` - but there is no edit form in the browser yet, so an administrator correcting an entry has to delete and recreate it.
+- The frontend has no automated tests. CI type-checks and builds it; the 133 tests are all backend.
+- CORS allows a single hard-coded origin (`http://localhost:5173`). Deploying anywhere means making that configurable first.
+- Three things are implemented but have never run against the real service: live Anthropic API calls, the Lambda on AWS, and the API Gateway deployment. Everything about them was verified against local equivalents (a real S3 API, a real Kafka broker, a real MongoDB wire protocol), and that difference is recorded in `verification/photo-pipeline-results.md` rather than glossed over.
 - Push notifications are not implemented.
-- The frontend is not yet containerized for production deployment.
+- The frontend is not yet containerized for production deployment, and nothing is deployed anywhere.
 - All municipal rules should be verified against official Blainville sources before public use.
 
 ## Roadmap
 
 Short-term:
 
-- Move sorting guide data into the `sorting_item` tables and expose a search API, replacing the static frontend dataset.
 - Add an edit form to the admin schedule and sorting item panels (the backend `PUT /{id}` endpoints already support it).
+- Make the allowed CORS origin configurable, as the first step towards deploying anything.
 
 Medium-term:
 
@@ -918,8 +1107,14 @@ Long-term:
 - Normalized MySQL schema for schedules, sorting records, translations, keywords, notices, and user preferences.
 - Flyway-managed database migrations for reproducible schema setup.
 - French-first multilingual interface with English and Chinese support.
-- Docker Compose environment for reproducible MySQL and backend startup.
+- Docker Compose environment for reproducible MySQL, Redis, Kafka, MongoDB and backend startup.
 - Admin-oriented data model designed for long-term maintenance of municipal rules.
+- A cache that degrades instead of failing, and fails fast instead of hanging when Redis is down.
+- Retrieval-augmented answers that refuse rather than invent when the guide has nothing relevant.
+- A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
+- A recurring calendar that extends itself without ever undoing an administrator's cancellation.
+- Photo uploads that never pass through the application, with EXIF stripped before anything is served.
+- 133 tests, of which 63 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 
