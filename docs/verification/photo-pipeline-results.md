@@ -12,9 +12,53 @@ browser ──presigned PUT──▶ s3://…/original/{id}      (bytes never to
                           Lambda: decode → resize → re-encode
                                    │
                            s3://…/processed/{id}
-                                   ▼
-                    API Gateway ──▶ the resident
+                                   ├──▶ API Gateway ──▶ the resident sees the photo
+                                   │
+                                   └──▶ vision model ──▶ "boîte à pizza"
+                                                              │
+                                              the same retrieval a typed question uses
+                                                              ▼
+                                                  guide entry ──▶ bin, instruction, source
 ```
+
+## What the pipeline is for
+
+Worth stating plainly, because infrastructure without a use is just
+infrastructure: the photo exists so a resident who does not know what
+something is called can still get an answer. `POST /api/photos/{id}/identify`
+reads the processed copy, asks a vision model **what the object is**, and
+feeds that name into the retrieval the text assistant already uses.
+
+**The model names the object; the guide decides the bin.** A vision model
+asked "which bin?" would answer from whatever it absorbed about recycling in
+general, and Blainville's rules are not general — soiled cardboard goes in the
+brown bin here and the black bin in plenty of other municipalities. The
+response schema has nowhere to put a bin colour, so the constraint is
+structural rather than a prompt the model might drift from:
+
+```java
+public record MaterialIdentification(
+        String material,             // "boîte à pizza"
+        List<String> alternateTerms, // synonyms, to widen the guide search
+        boolean uncertain            // too blurry / too ambiguous to name
+) { }
+```
+
+The photo path therefore inherits the text assistant's guarantees, refusal
+included. Three outcomes, three different things to tell the resident:
+
+| Outcome | What they see |
+|---|---|
+| Recognised, and in the guide | The bin, the instruction, and the entry it came from |
+| Recognised, not in the guide | *"I recognised «aquarium», but that is not in the Blainville guide"* |
+| Not recognised | *"I can't make out what that is — try a sharper photo"* |
+
+Naming what it saw even when the answer fails is the difference between
+*retake the photo* and *phone the city*. Pinned by
+`PhotoSortingServiceTest`, including the assertion that the composer is never
+reached when retrieval finds nothing.
+
+
 
 ## The part that matters: GPS coordinates
 
@@ -136,11 +180,31 @@ otherwise.
 - **CORS allows `PUT` from one origin.** A wildcard would let any page on the
   internet spend this bucket's storage.
 
+## In the browser
+
+| | |
+|---|---|
+| ![Photo question](screenshots/16-photo-ask.png) | ![Photo answer](screenshots/17-photo-answer.png) |
+| "Or take a photo", under the typed question | Recognised as *boîte à pizza*, answered from the guide entry, sourced |
+
+`capture="environment"` asks a phone for the rear camera directly, which is
+the device this feature is for. The provider line reads `vision+template`,
+which is the two-stage design made visible: the vision model named it, the
+guide answered it.
+
+> **Stated plainly:** this environment has no AWS account and no Anthropic
+> key, so the two calls that need them were answered locally for the
+> screenshot. Everything else on the page is the real application — the file
+> input, the size and type checks, the request sequence, the rendering, the
+> source links. The pipeline itself is covered against a real S3 API by
+> `PhotoPipelineIntegrationTest`, and the identify logic by
+> `PhotoSortingServiceTest`. No live vision call has been made.
+
 ## Tests
 
 ```text
-mvn test                    51/51 passing (unit, no infrastructure)
-mvn test -Pintegration-test 96/96 passing (51 unit + 45 integration)
+mvn test                    57/57 passing (unit, no infrastructure)
+mvn test -Pintegration-test 102/102 passing (57 unit + 45 integration)
 ```
 
 ## Deploying it for real

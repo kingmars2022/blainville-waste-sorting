@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "../useI18n";
 import { sortingGuide, type DestinationType } from "../data/sortingGuide";
 import { askAssistant, type AssistantAnswer } from "../api/assistant";
+import { askAboutPhoto, type PhotoAnswer } from "../api/photo";
 import { ApiError } from "../api/client";
 
 const { language, t } = useI18n();
@@ -20,6 +21,59 @@ watch(language, () => {
   assistantError.value = "";
   assistantPending.value = false;
 }, { flush: "sync" });
+
+const MAX_PHOTO_BYTES = 10_000_000;
+const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+const photoAnswer = ref<PhotoAnswer | null>(null);
+const photoError = ref("");
+const photoStage = ref<"" | "uploading" | "identifying">("");
+
+watch(language, () => {
+  photoAnswer.value = null;
+  photoError.value = "";
+});
+
+async function onPhotoChosen(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  // Reset immediately, so choosing the same file twice still fires a change.
+  input.value = "";
+  if (!file) {
+    return;
+  }
+
+  // Checked here as well as on the server, purely so the resident hears about
+  // it before a needless round trip. The server's check is the real one.
+  if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
+    photoError.value = t("photo.wrongType");
+    return;
+  }
+  if (file.size > MAX_PHOTO_BYTES) {
+    photoError.value = t("photo.tooBig");
+    return;
+  }
+
+  photoError.value = "";
+  photoAnswer.value = null;
+  const version = ++requestVersion;
+
+  try {
+    photoStage.value = "uploading";
+    const result = await askAboutPhoto(file, language.value);
+    if (version === requestVersion) {
+      photoAnswer.value = result.answer;
+    }
+  } catch (error) {
+    if (version !== requestVersion) return;
+    photoError.value =
+      error instanceof ApiError && error.status === 429
+        ? t("assistant.rateLimited")
+        : t("photo.error");
+  } finally {
+    if (version === requestVersion) photoStage.value = "";
+  }
+}
 
 async function ask() {
   const question = assistantQuestion.value.trim();
@@ -103,6 +157,55 @@ function destinationLabel(destination: DestinationType | "all") {
           {{ assistantPending ? t("assistant.asking") : t("assistant.ask") }}
         </button>
       </form>
+
+      <div class="photo-ask">
+        <h3>{{ t("photo.title") }}</h3>
+        <p class="assistant-hint">{{ t("photo.hint") }}</p>
+        <label class="photo-button" :class="{ busy: photoStage }">
+          <!--
+            capture="environment" asks a phone for the rear camera directly,
+            which is the whole point on the device this feature is for.
+          -->
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            capture="environment"
+            :disabled="!!photoStage"
+            @change="onPhotoChosen"
+          />
+          <span v-if="photoStage === 'uploading'">{{ t("photo.uploading") }}</span>
+          <span v-else-if="photoStage === 'identifying'">{{ t("photo.identifying") }}</span>
+          <span v-else>{{ t("photo.choose") }}</span>
+        </label>
+
+        <p v-if="photoError" class="assistant-error">{{ photoError }}</p>
+
+        <article
+          v-else-if="photoAnswer"
+          class="assistant-answer"
+          :class="{ ungrounded: !photoAnswer.grounded }"
+        >
+          <p v-if="photoAnswer.identifiedAs" class="photo-identified">
+            {{ t("photo.identifiedAs") }}: <strong>{{ photoAnswer.identifiedAs }}</strong>
+          </p>
+          <p>{{ photoAnswer.answer }}</p>
+
+          <p v-if="photoAnswer.sources.length" class="assistant-sources">
+            <strong>{{ t("assistant.sources") }}:</strong>
+            <a
+              v-for="source in photoAnswer.sources"
+              :key="source.itemId"
+              :href="source.sourceUrl ?? undefined"
+              target="_blank"
+              rel="noreferrer"
+            >{{ source.name }}</a>
+          </p>
+
+          <p class="assistant-provider">
+            {{ t("assistant.poweredBy") }} {{ photoAnswer.provider }}
+          </p>
+        </article>
+      </div>
 
       <p v-if="assistantError" class="assistant-error">{{ assistantError }}</p>
 

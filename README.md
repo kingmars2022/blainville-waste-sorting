@@ -16,6 +16,8 @@ flowchart LR
     S3 -.->|"ObjectCreated"| L["Lambda<br/>strip EXIF, resize"]
     L --> S3P[("S3<br/>processed/")]
     S3P -->|"API Gateway"| B
+    S3P -->|"names the object"| V["Vision"]
+    V -->|"search term"| AI
     A -->|"same transaction"| OB[("outbox_event")]
     OB -.->|"relay, at-least-once"| K["Kafka<br/>2 consumer groups"]
     K --> AU[("Audit trail<br/>MySQL JSON or MongoDB")]
@@ -30,7 +32,7 @@ flowchart LR
 | API | Spring Boot, Java 21 |
 | Persistence | MyBatis, MySQL (9 tables), Flyway (8 migrations) |
 | Events | Transactional outbox → Kafka, two consumer groups |
-| Photos | S3 presigned upload, Lambda (EXIF strip + resize), API Gateway |
+| Photos | S3 presigned upload, Lambda (EXIF strip + resize), API Gateway, vision lookup |
 | Audit trail | MongoDB or MySQL JSON, same interface and same tests |
 | Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
 | Assistant | Retrieval-augmented Q&A over MySQL full-text; Claude optional |
@@ -98,6 +100,15 @@ from the arguments that will actually run, not asked of the model, so it
 cannot misrepresent them.
 [`agent/`](backend/src/main/java/com/bienvenueblainville/agent),
 [what was verified](docs/verification/agent-results.md)
+
+**A photo of the thing, when you don't know what it's called.** The resident
+photographs it; a vision model says *what it is*, and the sorting guide says
+*which bin* — never the model. A vision model asked "which bin?" answers from
+recycling in general, and Blainville is not general: soiled cardboard goes in
+the brown bin here and the black bin in plenty of other cities. The response
+schema has nowhere to put a bin colour, so that split is structural rather
+than a prompt it could drift from, and the photo path inherits the text
+assistant's refusal for free.
 
 **Resident photos never pass through the application, and the copy that is
 served has no GPS in it.** A phone photo is a few megabytes; accepting it as a
@@ -190,7 +201,11 @@ requests. Method, numbers, and honest caveats:
 </tr>
 <tr>
 <td><img src="docs/verification/screenshots/10-assistant-fr.png" width="380" alt="Sorting assistant answering a French question, showing the guide entry the answer came from" /><br />Assistant — grounded, with sources</td>
-<td><img src="docs/verification/screenshots/11-assistant-refusal.png" width="380" alt="Sorting assistant refusing a question the guide does not cover, styled differently from an answer" /><br />Assistant — refusing, and looking like it</td>
+<td><img src="docs/verification/screenshots/16-photo-ask.png" width="380" alt="The sorting page offering a typed question or a photo" /><br />Ask in words, or take a photo</td>
+</tr>
+<tr>
+<td><img src="docs/verification/screenshots/17-photo-answer.png" width="380" alt="Sorting page showing a photo recognised as a pizza box and answered from the municipal guide entry" /><br />Photo — recognised, then looked up</td>
+<td><img src="docs/verification/screenshots/11-assistant-refusal.png" width="380" alt="Sorting assistant refusing a question the guide does not cover" /><br />Assistant — refusing, and looking like it</td>
 </tr>
 <tr>
 <td><img src="docs/verification/screenshots/13-agent-plan.png" width="380" alt="Admin agent proposing two changes in an amber panel, with confirm and discard buttons" /><br />Admin agent — a proposal, not an action</td>
@@ -208,7 +223,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-96 tests: 51 unit, 45 integration.
+102 tests: 57 unit, 45 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -224,6 +239,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `NoticeEventPipelineIntegrationTest` | 5 | outbox commits with the write, relay, two consumer groups, replay safety |
 | `PhotoPipelineIntegrationTest` | 7 | real S3: presign, upload, Lambda, prefix isolation, path validation |
 | `PhotoProcessorTest` | 5 | EXIF GPS stripped, including when no resize is needed |
+| `PhotoSortingServiceTest` | 6 | the model names, the guide decides; refusal when the guide has no entry |
 | `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
 | `AdminAgentServiceTest` | 4 | writes recorded not executed, reads executed, turn ceiling |
 | `StepSummariserTest` | 4 | the confirmation line, including missing arguments |

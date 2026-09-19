@@ -639,3 +639,42 @@ textarea {
   color: #8c2f2f;
   font-weight: 600;
 }
+
+/* --- Photo question ----------------------------------------------------- */
+
+.photo-ask {
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5ece8;
+}
+
+.photo-ask h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.photo-button {
+  display: inline-block;
+  padding: 0.65rem 1.3rem;
+  border: 1px dashed #1f6f54;
+  border-radius: 8px;
+  color: #1f6f54;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.photo-button.busy {
+  border-style: solid;
+  border-color: #9db3a9;
+  color: #7a8a82;
+  cursor: progress;
+}
+
+.photo-button input {
+  display: none;
+}
+
+.photo-identified {
+  font-size: 0.9rem;
+  color: #40544a;
+}

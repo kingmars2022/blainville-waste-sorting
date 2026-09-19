@@ -134,6 +134,24 @@ The same assistant works in Chinese, which needs a different full-text parser to
 
 *"废电池怎么处理？" — routed to the ecocentre entry, with its address.*
 
+### Photo Question (Take a Picture Instead)
+
+Some things a resident cannot name. A photo is often the only way they can ask, so the sorting page offers a camera alongside the text box.
+
+The pipeline behind it is the project's AWS surface, and it exists for this feature rather than the other way round. The browser asks for a presigned URL and uploads **straight to S3** - a phone photo is several megabytes, and accepting it as a POST would make the slowest connections hold a request thread the longest. An `ObjectCreated` event triggers a **Lambda** that re-encodes the image, which drops every EXIF segment, including the GPS coordinates of whatever curb the resident was standing on. **API Gateway** serves the stripped copy directly from the bucket; the original has no route at all and expires after seven days.
+
+Then the part that makes it an answer rather than a file upload: the processed copy goes to a vision model that is asked **what the object is**, and that name is fed into the same retrieval a typed question uses.
+
+<img src="verification/screenshots/16-photo-ask.png" width="600" alt="The sorting page offering both a typed question and a photo" />
+
+*Ask in words, or photograph it.*
+
+<img src="verification/screenshots/17-photo-answer.png" width="600" alt="A photo recognised as a pizza box, answered from the Blainville guide entry with the source shown" />
+
+*Recognised as "boîte à pizza", then answered from the guide entry - the provider line reads `vision+template`, which is the two-stage design made visible.*
+
+**The model names the object; the guide decides the bin.** This is the same rule the text assistant follows and it matters more here, not less: a vision model asked "which bin?" answers from recycling in general, and Blainville is not general - soiled cardboard goes in the brown bin here and the black bin in plenty of other municipalities. The response schema has nowhere to put a bin colour, so the constraint is structural rather than a prompt the model might drift from, and the photo path inherits the refusal too: an object the guide does not cover produces "I recognised an aquarium, but that is not in the guide", not a guess.
+
 ### Admin Agent (Propose, then Approve)
 
 In the admin console, an administrator can describe a change in plain language instead of filling several forms. The agent reads the live schedule, then comes back with a plan. Nothing reaches the database until the **Confirmer et appliquer** button is pressed.
@@ -297,6 +315,13 @@ The backend `PUT /{id}` endpoints for schedule and sorting items work, but the a
 
 - Claude tool use over the existing admin services, with a hand-written loop
 - Proposed changes held in Redis until an administrator approves them
+
+### Photos and cloud services
+
+- S3 presigned uploads, so image bytes never pass through the application
+- Lambda for EXIF stripping and resizing, triggered by S3 object creation
+- API Gateway serving the processed copy straight from the bucket
+- Vision identification feeding the existing sorting-guide retrieval
 
 ### DevOps and Tooling
 

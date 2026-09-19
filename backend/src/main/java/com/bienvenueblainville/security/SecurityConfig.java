@@ -58,6 +58,7 @@ public class SecurityConfig {
                         // processed copy is readable - see PhotoController.
                         .requestMatchers(HttpMethod.POST, "/api/photos/upload-url").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/photos/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/photos/*/identify").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )

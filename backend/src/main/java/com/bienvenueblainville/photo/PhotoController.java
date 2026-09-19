@@ -1,6 +1,8 @@
 package com.bienvenueblainville.photo;
 
 import com.bienvenueblainville.assistant.AssistantRateLimiter;
+import com.bienvenueblainville.common.LanguageCode;
+import com.bienvenueblainville.photo.dto.PhotoAnswer;
 import com.bienvenueblainville.photo.dto.UploadRequest;
 import com.bienvenueblainville.photo.dto.UploadTicket;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,11 +40,18 @@ public class PhotoController {
     private final PhotoStorage storage;
     private final PhotoProperties properties;
     private final AssistantRateLimiter rateLimiter;
+    private final PhotoSortingService sorting;
 
-    public PhotoController(PhotoStorage storage, PhotoProperties properties, AssistantRateLimiter rateLimiter) {
+    public PhotoController(
+            PhotoStorage storage,
+            PhotoProperties properties,
+            AssistantRateLimiter rateLimiter,
+            PhotoSortingService sorting
+    ) {
         this.storage = storage;
         this.properties = properties;
         this.rateLimiter = rateLimiter;
+        this.sorting = sorting;
     }
 
     /**
@@ -71,6 +81,29 @@ public class PhotoController {
     }
 
     /**
+     * What is this, and which bin does it go in?
+     *
+     * <p>Two steps, deliberately separate: the vision model names the object,
+     * and the municipal guide decides the bin. See {@link PhotoSortingService}
+     * for why a vision model must not be asked the second question.
+     */
+    @PostMapping("/{photoId}/identify")
+    public PhotoAnswer identify(
+            @PathVariable String photoId,
+            @RequestParam LanguageCode language,
+            HttpServletRequest http
+    ) {
+        requirePhotoId(photoId);
+        // A vision call is the most expensive request this application can
+        // make, so it shares the assistant's per-IP quota.
+        rateLimiter.check(http.getRemoteAddr());
+
+        return sorting.identify(photoId, language)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "That photo is not ready yet, or does not exist."));
+    }
+
+    /**
      * Serves the processed copy — never the original.
      *
      * <p>That distinction is the whole privacy story: the original still holds
@@ -83,9 +116,7 @@ public class PhotoController {
      */
     @GetMapping("/{photoId}")
     public ResponseEntity<byte[]> processed(@PathVariable String photoId) {
-        if (!PHOTO_ID.matcher(photoId).matches()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a photo id.");
-        }
+        requirePhotoId(photoId);
 
         return storage.readProcessed(photoId)
                 .map(bytes -> ResponseEntity.ok()
@@ -93,5 +124,11 @@ public class PhotoController {
                         .body(bytes))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "That photo is not ready yet, or does not exist."));
+    }
+
+    private static void requirePhotoId(String photoId) {
+        if (!PHOTO_ID.matcher(photoId).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a photo id.");
+        }
     }
 }
