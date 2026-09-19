@@ -247,18 +247,18 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-122 tests: 63 unit, 59 integration.
+123 tests: 64 unit, 59 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
 | `AuthServiceTest` | 3 | registration, login, password hashing |
 | `JwtServiceTest` | 3 | token issue, parse, rejection |
-| `SortingItemServiceTest` | 4 | multilingual search and keyword matching |
+| `SortingItemServiceTest` | 5 | multilingual search and keyword matching |
 | `CollectionServiceTest` | 3 | sector schedule and bin colour resolution |
-| `SpecialNoticeServiceTest` | 1 | notice visibility |
+| `SpecialNoticeServiceTest` | 3 | notice visibility |
 | `AuthenticationFlowIntegrationTest` | 7 | full context, real MySQL, real filter chain |
 | `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
-| `AssistantIntegrationTest` | 8 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, real-Redis quota |
+| `AssistantIntegrationTest` | 11 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, real-Redis quota |
 | `AdminAgentIntegrationTest` | 7 | real writes, single-use plans, plan ownership, validation, RBAC |
 | `NoticeEventPipelineIntegrationTest` | 5 | outbox commits with the write, relay, two consumer groups, replay safety |
 | `PhotoPipelineIntegrationTest` | 7 | real S3: presign, upload, Lambda, prefix isolation, path validation |
@@ -272,10 +272,11 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `StepSummariserTest` | 4 | the confirmation line, including missing arguments |
 | `QueryNormalizerTest` | 6 | stopword stripping, accent folding, per-language rules |
 | `SortingGuideRetrieverTest` | 4 | relevance cutoff, parser selection, empty-query short circuit |
-| `AssistantServiceTest` | 3 | the refusal rule: no context means no model call |
+| `AssistantServiceTest` | 4 | the refusal rule: no context means no model call |
 | `TemplateAnswerComposerTest` | 3 | trilingual answer wording |
 | `AssistantRateLimiterTest` | 5 | quota boundary, missing counter, and the failure policy in each mode |
 | `ClaudeAnswerComposerTest` | 1 | template provider attribution after API failure |
+| `LocalS3Test` | 1 | the test S3 server starts without dragging in the app's database |
 
 Unit tests need nothing but the JVM:
 
