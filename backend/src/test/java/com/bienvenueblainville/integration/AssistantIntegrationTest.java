@@ -59,9 +59,19 @@ class AssistantIntegrationTest {
     @Autowired
     private StringRedisTemplate redis;
 
+    @Autowired
+    private com.bienvenueblainville.assistant.AnswerCache answerCache;
+
     @BeforeEach
-    void clearRateLimitCounters() {
-        Set<String> keys = redis.keys("assistant:ratelimit:*");
+    void clearRedisState() {
+        drop("assistant:ratelimit:*");
+        // Answers are cached now, so a previous test's answer would otherwise
+        // satisfy the next one without exercising retrieval at all.
+        drop(com.bienvenueblainville.assistant.AnswerCache.PREFIX + "*");
+    }
+
+    private void drop(String pattern) {
+        Set<String> keys = redis.keys(pattern);
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
         }
@@ -144,6 +154,43 @@ class AssistantIntegrationTest {
         String key = keys.iterator().next();
         assertThat(redis.opsForValue().get(key)).isEqualTo("1");
         assertThat(redis.getExpire(key)).isGreaterThan(0L);
+    }
+
+    @Test
+    void askingTheSameThingTwiceIsAnsweredFromCacheWithoutRepeatingTheWork() throws Exception {
+        // The same twenty materials are what a municipal guide gets asked
+        // about, so a repeat is the normal case rather than an edge one.
+        JsonNode first = ask("Where does soiled cardboard go?", "en");
+
+        assertThat(redis.keys(com.bienvenueblainville.assistant.AnswerCache.PREFIX + "*"))
+                .hasSize(1);
+
+        JsonNode second = ask("Where does soiled cardboard go?", "en");
+        assertThat(second.get("answer").asText()).isEqualTo(first.get("answer").asText());
+    }
+
+    @Test
+    void punctuationAndCaseDoNotProduceASecondCacheEntry() throws Exception {
+        // Normalized before hashing, or the cache would miss on exactly the
+        // variations residents actually type.
+        ask("Where does soiled cardboard go?", "en");
+        ask("where does SOILED cardboard go", "en");
+
+        assertThat(redis.keys(com.bienvenueblainville.assistant.AnswerCache.PREFIX + "*"))
+                .hasSize(1);
+    }
+
+    @Test
+    void editingTheSortingGuideDropsCachedAnswers() throws Exception {
+        // The failure this prevents: a cached refusal for a material that an
+        // administrator has just added. The guide would be right and the
+        // assistant would still be saying it does not know.
+        ask("Where does soiled cardboard go?", "en");
+        assertThat(redis.keys(com.bienvenueblainville.assistant.AnswerCache.PREFIX + "*")).isNotEmpty();
+
+        answerCache.invalidateAll();
+
+        assertThat(redis.keys(com.bienvenueblainville.assistant.AnswerCache.PREFIX + "*")).isEmpty();
     }
 
     @Test

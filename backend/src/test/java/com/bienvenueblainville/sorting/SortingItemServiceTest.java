@@ -2,6 +2,7 @@ package com.bienvenueblainville.sorting;
 
 import com.bienvenueblainville.collection.BinColor;
 import com.bienvenueblainville.common.LanguageCode;
+import com.bienvenueblainville.assistant.AnswerCache;
 import com.bienvenueblainville.sorting.dto.SortingItemRequest;
 import com.bienvenueblainville.sorting.dto.SortingItemResponse;
 import com.bienvenueblainville.sorting.dto.TranslationInput;
@@ -33,13 +34,15 @@ class SortingItemServiceTest {
     private SortingItemTranslationMapper translationMapper;
     @Mock
     private SortingItemKeywordMapper keywordMapper;
+    @Mock
+    private AnswerCache answerCache;
 
     private SortingItemService service;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        service = new SortingItemService(itemMapper, translationMapper, keywordMapper);
+        service = new SortingItemService(itemMapper, translationMapper, keywordMapper, answerCache);
     }
 
     private SortingItemRequest sampleRequest() {

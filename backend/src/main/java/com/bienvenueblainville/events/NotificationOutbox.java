@@ -1,54 +1,41 @@
 package com.bienvenueblainville.events;
 
+import com.bienvenueblainville.notification.ResidentNotificationMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.Set;
-
 /**
- * The second consumer: works out who would be told about a new notice.
+ * The second consumer: puts a published notice into the inbox of every
+ * resident who asked to be told.
  *
- * <p>It stops at counting rather than sending, because this project has no
- * push channel and inventing one to justify the consumer would be exactly the
- * kind of thing the rest of this codebase argues against. What it does
- * demonstrate is the property that matters: two independent consumer groups
- * reading the same topic, each with its own offset, so neither can stall the
- * other.
+ * <p>It used to count recipients and log the number, because this application
+ * had no push channel and inventing one to justify the consumer would have
+ * been backwards. An in-app inbox needs no external service, so the consumer
+ * now does the real thing.
+ *
+ * <p>Deduplication moved with it, from an in-memory set to a unique key on
+ * {@code (user_id, event_id)}. The in-memory version reset on restart, which
+ * is precisely when a consumer is most likely to replay from its last
+ * committed offset - so the old guard was weakest exactly when it was needed.
  */
 @Component
 public class NotificationOutbox {
     private static final Logger log = LoggerFactory.getLogger(NotificationOutbox.class);
 
-    private final JdbcTemplate jdbc;
+    private final ResidentNotificationMapper notifications;
 
-    /**
-     * In-memory deduplication, because this consumer has no table of its own
-     * to hold a unique key. It resets on restart, which for a counter that
-     * nobody bills against is an acceptable trade — a real notification sender
-     * would need the same durable dedupe the audit store has.
-     */
-    private final Set<String> handled = ConcurrentHashMap.newKeySet();
-
-    public NotificationOutbox(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public NotificationOutbox(ResidentNotificationMapper notifications) {
+        this.notifications = notifications;
     }
 
     public void queueForActiveNotice(String eventId, Long noticeId) {
-        if (!handled.add(eventId)) {
-            return;
-        }
+        // One statement for the whole fan-out: the recipient list is a query
+        // the database can answer, and reading it into the application only to
+        // write it back would turn one round trip into one per resident.
+        int delivered = notifications.fanOutToResidentsWithReminders(noticeId, eventId);
 
-        Long recipients = jdbc.queryForObject(
-                "select count(*) from user_preference where reminder_enabled = true", Long.class);
-
-        log.info("Notice {} would notify {} resident(s) with reminders enabled", noticeId, recipients);
-    }
-
-    /** Exposed for the integration test, which asserts both consumers ran. */
-    public boolean hasHandled(String eventId) {
-        return handled.contains(eventId);
+        // Zero is the normal result for a redelivered event, not a problem.
+        log.info("Notice {} delivered to {} resident inbox(es)", noticeId, delivered);
     }
 }

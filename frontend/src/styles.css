@@ -678,3 +678,48 @@ textarea {
   font-size: 0.9rem;
   color: #40544a;
 }
+
+/* --- Resident notice inbox ---------------------------------------------- */
+
+.notice-inbox {
+  margin-bottom: 1.5rem;
+}
+
+.notice-inbox h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  color: #40544a;
+}
+
+.notice-inbox article {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.6rem;
+  border-radius: 8px;
+  background: #fdf8f0;
+  border-left: 4px solid #c08a3e;
+}
+
+.notice-inbox strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.notice-inbox p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.notice-inbox button {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #c7d5cd;
+  border-radius: 6px;
+  background: transparent;
+  color: #55655c;
+  font-size: 0.8rem;
+  cursor: pointer;
+}

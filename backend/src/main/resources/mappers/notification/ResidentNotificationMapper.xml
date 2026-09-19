@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bienvenueblainville.notification.ResidentNotificationMapper">
+
+    <!--
+        IGNORE, paired with the unique key on (user_id, event_id): a redelivered
+        event inserts nothing rather than failing the consumer or showing
+        residents the same notice twice. Kafka is at-least-once, so this is the
+        expected path and not an error path.
+    -->
+    <insert id="fanOutToResidentsWithReminders">
+        insert ignore into resident_notification (user_id, notice_id, event_id)
+        select p.user_id, #{noticeId}, #{eventId}
+        from user_preference p
+        where p.reminder_enabled = true
+    </insert>
+
+    <select id="findForUser" resultType="com.bienvenueblainville.notification.ResidentNotification">
+        select n.id            as id,
+               n.notice_id     as noticeId,
+               s.title_fr      as titleFr,
+               s.title_en      as titleEn,
+               s.title_zh      as titleZh,
+               s.body_fr       as bodyFr,
+               s.body_en       as bodyEn,
+               s.body_zh       as bodyZh,
+               n.created_at    as createdAt,
+               n.read_at       as readAt
+        from resident_notification n
+        <!--
+            The notice is joined rather than copied, so a correction reaches
+            anyone who has not read it yet. INNER JOIN, so a deleted notice
+            disappears from every inbox instead of leaving an empty card.
+        -->
+        join special_notice s on s.id = n.notice_id
+        where n.user_id = #{userId}
+        order by n.created_at desc
+        limit #{limit}
+    </select>
+
+    <select id="countUnread" resultType="long">
+        select count(*)
+        from resident_notification n
+        join special_notice s on s.id = n.notice_id
+        where n.user_id = #{userId} and n.read_at is null
+    </select>
+
+    <update id="markRead">
+        update resident_notification
+        <!-- Scoped by user_id as well as id: the path parameter is not a
+             capability, and a resident must not be able to mark someone
+             else's notification read by guessing a number. -->
+        set read_at = current_timestamp(3)
+        where id = #{id} and user_id = #{userId} and read_at is null
+    </update>
+</mapper>

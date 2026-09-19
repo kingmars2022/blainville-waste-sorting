@@ -26,7 +26,11 @@ spring:
     # The audit trail's document-store option. Nothing connects at startup, so
     # an unset MongoDB is only a problem if app.audit.store=mongodb.
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/bienvenue_blainville}
+      # serverSelectionTimeoutMS: the driver waits 30 seconds by default before
+      # admitting nothing is listening. MongoDB is optional here - the audit
+      # trail falls back to MySQL and the query log is analytics - so a missing
+      # one must fail fast rather than hold anything for half a minute.
+      uri: ${MONGODB_URI:mongodb://localhost:27017/bienvenue_blainville?serverSelectionTimeoutMS=2000&connectTimeoutMS=2000}
       auto-index-creation: false
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -37,6 +41,13 @@ spring:
       # once the broker has acknowledged it, so a weaker ack here would mean
       # marking events sent that a broker failover could still lose.
       acks: all
+      properties:
+        # Kafka's default is 60 SECONDS. `send()` blocks for this long when
+        # broker metadata is unavailable, so an unreachable broker would hold
+        # the calling thread - and the resident-query stream is published from
+        # inside a request. One second is plenty for a healthy broker and
+        # bounded enough that an unhealthy one costs a resident almost nothing.
+        max.block.ms: 1000
     consumer:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer

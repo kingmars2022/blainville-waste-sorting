@@ -54,6 +54,17 @@ public class SortingGuideRetriever {
         return language == LanguageCode.zh;
     }
 
+    /**
+     * What retrieval would actually search with, after stopwords and folding.
+     *
+     * <p>Recorded alongside the original question, because the gap between the
+     * two is where a retrieval bug hides: a question that searched for nothing
+     * looks identical to one that searched properly and found nothing.
+     */
+    public String searchTermsFor(String question, LanguageCode language) {
+        return question == null ? "" : QueryNormalizer.normalize(question, language);
+    }
+
     public List<RetrievedItem> retrieve(String question, LanguageCode language) {
         if (question == null || question.isBlank()) {
             return List.of();

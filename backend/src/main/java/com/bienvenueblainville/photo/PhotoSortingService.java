@@ -6,6 +6,7 @@ import com.bienvenueblainville.assistant.RetrievedItem;
 import com.bienvenueblainville.assistant.SortingGuideRetriever;
 import com.bienvenueblainville.assistant.dto.AssistantSource;
 import com.bienvenueblainville.common.LanguageCode;
+import com.bienvenueblainville.insights.QueryEventPublisher;
 import com.bienvenueblainville.photo.dto.PhotoAnswer;
 import org.springframework.stereotype.Service;
 
@@ -56,17 +57,20 @@ public class PhotoSortingService {
     private final PhotoIdentifier identifier;
     private final SortingGuideRetriever retriever;
     private final AnswerComposer composer;
+    private final QueryEventPublisher queries;
 
     public PhotoSortingService(
             PhotoStorage storage,
             PhotoIdentifier identifier,
             SortingGuideRetriever retriever,
-            AnswerComposer composer
+            AnswerComposer composer,
+            QueryEventPublisher queries
     ) {
         this.storage = storage;
         this.identifier = identifier;
         this.retriever = retriever;
         this.composer = composer;
+        this.queries = queries;
     }
 
     public Optional<PhotoAnswer> identify(String photoId, LanguageCode language) {
@@ -86,6 +90,14 @@ public class PhotoSortingService {
 
         MaterialIdentification material = identified.get();
         List<RetrievedItem> context = retriever.retrieve(material.searchQuery(), language);
+
+        // Same stream as a typed question, tagged "photo". The same material
+        // arrives worded very differently through the two paths, which is
+        // exactly what makes the comparison worth having.
+        queries.record("photo", language, material.material(), material.searchQuery(),
+                !context.isEmpty(),
+                context.isEmpty() ? 0d : context.get(0).score(),
+                context.stream().map(RetrievedItem::name).toList());
 
         if (context.isEmpty()) {
             // Recognised, but not in the guide. Saying what it thought it saw

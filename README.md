@@ -21,8 +21,11 @@ flowchart LR
     A -->|"same transaction"| OB[("outbox_event")]
     OB -.->|"relay, at-least-once"| K["Kafka<br/>2 consumer groups"]
     K --> AU[("Audit trail<br/>MySQL JSON or MongoDB")]
+    K --> IN[("Resident inbox")]
+    AI -->|"fire and forget"| K2["Kafka<br/>query stream"]
+    K2 --> MG[("MongoDB<br/>gap report")]
     A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
-    FW["Flyway V1-V8"] -.->|"migrates on startup"| D
+    FW["Flyway V1-V9"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
 ```
 
@@ -30,7 +33,7 @@ flowchart LR
 |---|---|
 | Frontend | Vue 3, TypeScript, Pinia, Vite |
 | API | Spring Boot, Java 21 |
-| Persistence | MyBatis, MySQL (9 tables), Flyway (8 migrations) |
+| Persistence | MyBatis, MySQL (11 tables), Flyway (9 migrations) |
 | Events | Transactional outbox → Kafka, two consumer groups |
 | Photos | S3 presigned upload, Lambda (EXIF strip + resize), API Gateway, vision lookup |
 | Audit trail | MongoDB or MySQL JSON, same interface and same tests |
@@ -123,6 +126,27 @@ GPS block, not asserted.
 [`photo/`](backend/src/main/java/com/bienvenueblainville/photo),
 [`infra/template.yaml`](infra/template.yaml),
 [what ran and what didn't](docs/verification/photo-pipeline-results.md)
+
+**The city finds out what it has not written down.** A question the guide
+cannot answer used to produce a polite "check blainville.ca" and then vanish —
+nobody learned that fourteen residents asked about aquariums last month. Every
+question now goes to a Kafka topic and a MongoDB aggregation turns the pile
+into a work list: which materials to add, in which languages, with samples of
+how residents actually phrased it. **This is the workload that wants a
+document store** — shape varies by source, the reads are aggregations rather
+than lookups, and a TTL index expires questions at 180 days with no scheduled
+job. No resident is identified; the question and what the guide did with it is
+the whole record.
+[`insights/`](backend/src/main/java/com/bienvenueblainville/insights),
+[what it found](docs/verification/insights-and-inbox-results.md)
+
+**Two event streams, opposite guarantees, on purpose.** A notice event must
+never be lost, so it commits inside the database transaction and a relay moves
+it afterwards. A resident's question must never slow anything down, so it is
+fired and forgotten — no transaction, no retry, no waiting for an ack. Picking
+one mechanism for both would get one of them wrong. Building the second one
+found two bugs in that promise: the producer ignored the events switch, and
+Kafka's `max.block.ms` default of **60 seconds** sat on the request path.
 
 **Events go through an outbox, because publishing from a service method is a
 dual write.** Calling Kafka inside `createNotice` means the database commit and
@@ -223,7 +247,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-102 tests: 57 unit, 45 integration.
+115 tests: 62 unit, 53 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -240,6 +264,8 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `PhotoPipelineIntegrationTest` | 7 | real S3: presign, upload, Lambda, prefix isolation, path validation |
 | `PhotoProcessorTest` | 5 | EXIF GPS stripped, including when no resize is needed |
 | `PhotoSortingServiceTest` | 6 | the model names, the guide decides; refusal when the guide has no entry |
+| `ResidentQueryInsightsIntegrationTest` | 5 | question → Kafka → MongoDB → gap report, and no resident identified |
+| `QueryEventPublisherTest` | 4 | the events gate, and both failure modes kept apart |
 | `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
 | `AdminAgentServiceTest` | 4 | writes recorded not executed, reads executed, turn ceiling |
 | `StepSummariserTest` | 4 | the confirmation line, including missing arguments |
@@ -275,7 +301,7 @@ cd backend && mvn test -Pintegration-test
 ```bash
 cp .env.example .env          # set DB_URL, DB_USERNAME, DB_PASSWORD,
                               # APP_JWT_SECRET, APP_ADMIN_EMAIL, APP_ADMIN_PASSWORD
-docker compose up -d --build  # MySQL + Redis + Kafka + MongoDB + backend; Flyway V1-V8
+docker compose up -d --build  # MySQL + Redis + Kafka + MongoDB + backend; Flyway V1-V9
 cd frontend && npm ci && npm run dev
 ```
 

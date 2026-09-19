@@ -1,5 +1,6 @@
 package com.bienvenueblainville.sorting;
 
+import com.bienvenueblainville.assistant.AnswerCache;
 import com.bienvenueblainville.common.LanguageCode;
 import com.bienvenueblainville.sorting.dto.SortingItemRequest;
 import com.bienvenueblainville.sorting.dto.SortingItemResponse;
@@ -20,15 +21,18 @@ public class SortingItemService {
     private final SortingItemMapper itemMapper;
     private final SortingItemTranslationMapper translationMapper;
     private final SortingItemKeywordMapper keywordMapper;
+    private final AnswerCache answerCache;
 
     public SortingItemService(
             SortingItemMapper itemMapper,
             SortingItemTranslationMapper translationMapper,
-            SortingItemKeywordMapper keywordMapper
+            SortingItemKeywordMapper keywordMapper,
+            AnswerCache answerCache
     ) {
         this.itemMapper = itemMapper;
         this.translationMapper = translationMapper;
         this.keywordMapper = keywordMapper;
+        this.answerCache = answerCache;
     }
 
     public List<SortingItemResponse> all() {
@@ -36,6 +40,9 @@ public class SortingItemService {
     }
 
     public SortingItemResponse create(SortingItemRequest request) {
+        // A new entry changes the answer to questions that previously had
+        // none, so every cached refusal is now potentially wrong.
+
         Map<String, Object> params = new HashMap<>();
         params.put("destinationType", request.destinationType());
         params.put("binColor", request.binColor());
@@ -45,25 +52,33 @@ public class SortingItemService {
         Long itemId = ((Number) params.get("id")).longValue();
 
         saveTranslationsAndKeywords(itemId, request);
+        answerCache.invalidateAll();
         return toResponse(requireItem(itemId));
     }
 
     public SortingItemResponse update(Long id, SortingItemRequest request) {
+        // An edit changes which entry wins for an unknown set of questions.
+
         requireItem(id);
         itemMapper.update(id, request.destinationType(), request.binColor(), request.sourceUrl());
 
         translationMapper.deleteByItemId(id);
         keywordMapper.deleteByItemId(id);
         saveTranslationsAndKeywords(id, request);
+        answerCache.invalidateAll();
 
         return toResponse(requireItem(id));
     }
 
     public void delete(Long id) {
+        // A deletion can turn a cached answer into one citing a row that no
+        // longer exists.
+
         requireItem(id);
         keywordMapper.deleteByItemId(id);
         translationMapper.deleteByItemId(id);
         itemMapper.delete(id);
+        answerCache.invalidateAll();
     }
 
     private void saveTranslationsAndKeywords(Long itemId, SortingItemRequest request) {

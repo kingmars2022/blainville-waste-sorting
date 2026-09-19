@@ -3,7 +3,6 @@ package com.bienvenueblainville.integration;
 import com.bienvenueblainville.audit.AuditRecord;
 import com.bienvenueblainville.audit.AuditStore;
 import com.bienvenueblainville.events.NoticeEvent;
-import com.bienvenueblainville.events.NotificationOutbox;
 import com.bienvenueblainville.events.OutboxMapper;
 import com.bienvenueblainville.events.OutboxRelay;
 import com.bienvenueblainville.notice.SpecialNotice;
@@ -70,7 +69,7 @@ class NoticeEventPipelineIntegrationTest {
     private AuditStore auditStore;
 
     @Autowired
-    private NotificationOutbox notifications;
+    private com.bienvenueblainville.notification.ResidentNotificationMapper notifications;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -78,6 +77,8 @@ class NoticeEventPipelineIntegrationTest {
     @AfterEach
     void cleanUp() {
         jdbc.update("delete from outbox_event where aggregate_id in "
+                + "(select id from special_notice where source_url = ?)", MARKER);
+        jdbc.update("delete from resident_notification where notice_id in "
                 + "(select id from special_notice where source_url = ?)", MARKER);
         jdbc.update("delete from special_notice where source_url = ?", MARKER);
     }
@@ -116,9 +117,13 @@ class NoticeEventPipelineIntegrationTest {
             assertThat(trail.get(0).after()).isNotNull();
         });
 
+        // The other group's real effect: the notice is in a resident's inbox.
+        // Asserting the delivered row rather than an in-memory flag means this
+        // survives a restart of the consumer, which is when replays happen.
         await().atMost(20, TimeUnit.SECONDS).untilAsserted(() ->
-                assertThat(auditStore.findByEntity("notice", created.id()))
-                        .allSatisfy(record -> assertThat(notifications.hasHandled(record.eventId())).isTrue()));
+                assertThat(jdbc.queryForObject(
+                        "select count(*) from resident_notification where notice_id = ?",
+                        Integer.class, created.id())).isPositive());
     }
 
     @Test

@@ -6,6 +6,7 @@ import com.bienvenueblainville.assistant.RetrievedItem;
 import com.bienvenueblainville.assistant.SortingGuideRetriever;
 import com.bienvenueblainville.collection.BinColor;
 import com.bienvenueblainville.common.LanguageCode;
+import com.bienvenueblainville.insights.QueryEventPublisher;
 import com.bienvenueblainville.photo.dto.PhotoAnswer;
 import com.bienvenueblainville.sorting.DestinationType;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,6 +44,8 @@ class PhotoSortingServiceTest {
     private SortingGuideRetriever retriever;
     @Mock
     private AnswerComposer composer;
+    @Mock
+    private QueryEventPublisher queries;
 
     private PhotoSortingService service;
 
@@ -49,7 +53,7 @@ class PhotoSortingServiceTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         when(composer.providerName()).thenReturn("template");
-        service = new PhotoSortingService(storage, identifier, retriever, composer);
+        service = new PhotoSortingService(storage, identifier, retriever, composer, queries);
     }
 
     @Test
@@ -98,6 +102,12 @@ class PhotoSortingServiceTest {
         // "phone the city" - two very different next steps for the resident.
         assertThat(answer.identifiedAs()).isEqualTo("aquarium");
         assertThat(answer.answer()).contains("aquarium").contains("blainville.ca");
+
+        // Tagged "photo", so the gap report can tell apart what residents type
+        // from what they photograph - the same material is worded very
+        // differently through the two.
+        verify(queries).record(eq("photo"), eq(LanguageCode.en), eq("aquarium"),
+                any(), eq(false), eq(0d), eq(List.of()));
     }
 
     @Test
