@@ -1,12 +1,13 @@
 package com.bienvenueblainville.assistant;
 
 import com.anthropic.client.AnthropicClient;
-import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.Optional;
 
 @Configuration
 @EnableConfigurationProperties(AssistantProperties.class)
@@ -23,7 +24,7 @@ public class AssistantConfig {
      * rather than silent.
      */
     @Bean
-    public AnswerComposer answerComposer(AssistantProperties properties) {
+    public AnswerComposer answerComposer(AssistantProperties properties, AnthropicClientProvider anthropic) {
         AnswerComposer template = new TemplateAnswerComposer();
 
         if (!"anthropic".equalsIgnoreCase(properties.provider())) {
@@ -31,15 +32,14 @@ public class AssistantConfig {
             return template;
         }
 
-        String apiKey = properties.apiKey();
-        if (apiKey == null || apiKey.isBlank()) {
+        Optional<AnthropicClient> client = anthropic.client();
+        if (client.isEmpty()) {
             log.warn("app.assistant.provider=anthropic but ANTHROPIC_API_KEY is not set; "
                     + "falling back to the template composer");
             return template;
         }
 
-        AnthropicClient client = AnthropicOkHttpClient.builder().apiKey(apiKey).build();
         log.info("Assistant provider: Claude ({})", properties.model());
-        return new ClaudeAnswerComposer(client, properties.model(), template);
+        return new ClaudeAnswerComposer(client.get(), properties.model(), template);
     }
 }

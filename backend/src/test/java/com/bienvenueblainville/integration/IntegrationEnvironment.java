@@ -16,14 +16,14 @@ import java.util.Optional;
  * ({@code docker compose up -d mysql redis}); CI overrides them with
  * environment variables pointing at its service containers.
  */
-final class IntegrationEnvironment {
-    static final String ADMIN_EMAIL = "admin@blainville.local";
-    static final String ADMIN_PASSWORD = "IntegrationTestAdminPass123!";
+public final class IntegrationEnvironment {
+    public static final String ADMIN_EMAIL = "admin@blainville.local";
+    public static final String ADMIN_PASSWORD = "IntegrationTestAdminPass123!";
 
     private IntegrationEnvironment() {
     }
 
-    static void register(DynamicPropertyRegistry registry) {
+    public static void register(DynamicPropertyRegistry registry) {
         String host = env("DB_HOST", "localhost");
         String port = env("DB_PORT", env("MYSQL_PORT", "3307"));
         String database = env("DB_NAME", "bienvenue_blainville");
