@@ -56,6 +56,12 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       CACHE_TYPE: ${CACHE_TYPE:-redis}
+      ASSISTANT_PROVIDER: ${ASSISTANT_PROVIDER:-template}
+      ASSISTANT_MODEL: ${ASSISTANT_MODEL:-claude-opus-5}
+      # Empty by default: the assistant works without it. Supply your own key
+      # in .env (git-ignored) to have Claude do the wording.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ASSISTANT_RATE_LIMIT: ${ASSISTANT_RATE_LIMIT:-30}
       TZ: America/Toronto
     ports:
       - "${BACKEND_PORT:-8080}:8080"

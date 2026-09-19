@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bienvenueblainville.assistant.SortingSearchMapper">
+
+    <!--
+        Relevance is the sum of two full-text scores: how well the resident's
+        words match the entry's name and instruction, and how well they match
+        the keywords an administrator curated for it.
+
+        Keywords are additive rather than a fallback because they are what make
+        colloquial input work, and measurably so: for "Où va une boîte à pizza
+        sale ?" the name/instruction score alone ranks a document-shredding
+        entry first (2.73) over the correct soiled-cardboard entry (1.83) - one
+        stray common word is enough. Adding the keyword score puts the right
+        entry on top at 4.74. LEFT JOIN, so an entry with no keywords in this
+        language is still findable by name.
+
+        The `ngram` flag selects which index to MATCH against; see V7 and
+        SortingGuideRetriever for why one parser cannot serve all three
+        languages.
+
+        #{query} is a bind parameter throughout. Concatenating a resident's raw
+        text into MATCH ... AGAINST would be the same class of bug as SQL
+        injection, and in boolean mode their stray punctuation (+ - * " ~)
+        would additionally make the query error out - hence natural language
+        mode, which takes the whole string as terms.
+    -->
+    <select id="search" resultType="com.bienvenueblainville.assistant.RetrievedItem">
+        select
+            t.item_id                                as itemId,
+            t.language_code                          as languageCode,
+            t.name                                   as name,
+            t.instruction                            as instruction,
+            t.location                               as location,
+            i.destination_type                       as destinationType,
+            i.bin_color                              as binColor,
+            i.source_url                             as sourceUrl,
+            <choose>
+                <when test="ngram">
+                    match(t.search_ngram) against (#{query} in natural language mode)
+                </when>
+                <otherwise>
+                    match(t.name, t.instruction) against (#{query} in natural language mode)
+                </otherwise>
+            </choose>
+                + coalesce(k.keyword_score, 0)       as score
+        from sorting_item_translation t
+        join sorting_item i on i.id = t.item_id
+        left join (
+            select
+                item_id,
+                <choose>
+                    <when test="ngram">
+                        sum(match(keyword_ngram) against (#{query} in natural language mode))
+                    </when>
+                    <otherwise>
+                        sum(match(keyword) against (#{query} in natural language mode))
+                    </otherwise>
+                </choose>
+                                                     as keyword_score
+            from sorting_item_keyword
+            where language_code = #{languageCode}
+            group by item_id
+        ) k on k.item_id = t.item_id
+        where t.language_code = #{languageCode}
+        having score > 0
+        order by score desc
+        limit #{limit}
+    </select>
+</mapper>

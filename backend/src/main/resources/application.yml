@@ -38,6 +38,18 @@ app:
   admin:
     email: ${APP_ADMIN_EMAIL:admin@blainville.local}
     password: ${APP_ADMIN_PASSWORD:change-this-development-admin-password}
+  assistant:
+    # `template` answers straight from the retrieved guide entries - no API key,
+    # no cost, works on a fresh clone. Set provider=anthropic and export
+    # ANTHROPIC_API_KEY to have Claude do the wording instead; the retrieved
+    # entries stay the only facts either one is allowed to use.
+    provider: ${ASSISTANT_PROVIDER:template}
+    model: ${ASSISTANT_MODEL:claude-opus-5}
+    api-key: ${ANTHROPIC_API_KEY:}
+    rate-limit:
+      # This is the only endpoint that can spend money per request, and it is
+      # unauthenticated. Counted per IP in Redis; see AssistantRateLimiter.
+      requests-per-hour: ${ASSISTANT_RATE_LIMIT:30}
   collection:
     put-out-after: "20:00"
     put-out-before: "06:00"
