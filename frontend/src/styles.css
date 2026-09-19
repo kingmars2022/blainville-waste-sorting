@@ -511,3 +511,131 @@ textarea {
   color: #8c2f2f;
   font-size: 0.9rem;
 }
+
+/* --- Admin agent -------------------------------------------------------- */
+
+.agent {
+  background: #ffffff;
+  border: 1px solid #d8e2dc;
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.agent h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+}
+
+.agent-hint {
+  margin: 0 0 0.9rem;
+  color: #55655c;
+  font-size: 0.9rem;
+}
+
+.agent-form {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.agent-form textarea {
+  flex: 1 1 22rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #c7d5cd;
+  border-radius: 8px;
+  font: inherit;
+  resize: vertical;
+}
+
+.agent-form button,
+.agent-actions button {
+  padding: 0.7rem 1.4rem;
+  border: 0;
+  border-radius: 8px;
+  background: #1f6f54;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.agent-form button:disabled,
+.agent-actions button:disabled {
+  background: #9db3a9;
+  cursor: not-allowed;
+}
+
+.agent-actions .agent-secondary {
+  background: transparent;
+  color: #55655c;
+  border: 1px solid #c7d5cd;
+}
+
+/* A proposal, not a result: amber until someone confirms it. */
+.agent-plan {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  background: #fdf8f0;
+  border-left: 4px solid #c08a3e;
+}
+
+.agent-narrative {
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.agent-steps {
+  margin: 0.4rem 0 1rem;
+  padding-left: 1.2rem;
+}
+
+.agent-steps li {
+  margin-bottom: 0.4rem;
+  line-height: 1.45;
+}
+
+.agent-steps code {
+  display: inline-block;
+  margin-right: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #ece2d2;
+  font-size: 0.8rem;
+}
+
+.agent-empty {
+  margin: 0;
+  color: #55655c;
+}
+
+.agent-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.agent-result {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  background: #f1f7f4;
+  border-left: 4px solid #1f6f54;
+}
+
+.agent-result.partial {
+  background: #fdecec;
+  border-left-color: #8c2f2f;
+}
+
+.agent-result ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.agent-failure {
+  margin: 0.6rem 0 0;
+  color: #8c2f2f;
+  font-weight: 600;
+}

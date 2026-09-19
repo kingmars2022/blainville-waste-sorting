@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "../useI18n";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
+import { executeAgentPlan, planWithAgent, type AgentExecution, type AgentPlan } from "../api/agent";
 
 type Notice = {
   id: number;
@@ -45,6 +46,67 @@ type SortingItem = {
 };
 
 const { t, language } = useI18n();
+
+const agentInstruction = ref("");
+const agentPlan = ref<AgentPlan | null>(null);
+const agentExecution = ref<AgentExecution | null>(null);
+const agentError = ref("");
+const agentPlanning = ref(false);
+const agentApplying = ref(false);
+
+async function proposePlan() {
+  const instruction = agentInstruction.value.trim();
+  if (!instruction || agentPlanning.value) {
+    return;
+  }
+
+  agentPlanning.value = true;
+  agentError.value = "";
+  agentPlan.value = null;
+  agentExecution.value = null;
+
+  try {
+    agentPlan.value = await planWithAgent(instruction);
+  } catch (error) {
+    // 503 means no API key is configured. That is not a failure to apologise
+    // for - it is a setup step, and the forms below already do the job.
+    agentError.value =
+      error instanceof ApiError && error.status === 503
+        ? t("agent.unavailable")
+        : error instanceof ApiError
+          ? error.message
+          : t("agent.error");
+  } finally {
+    agentPlanning.value = false;
+  }
+}
+
+async function approvePlan() {
+  const planId = agentPlan.value?.planId;
+  if (!planId || agentApplying.value) {
+    return;
+  }
+
+  agentApplying.value = true;
+  agentError.value = "";
+
+  try {
+    agentExecution.value = await executeAgentPlan(planId);
+    // The plan is single-use on the server, so it must not stay approvable here.
+    agentPlan.value = null;
+    await Promise.all([loadNotices(), loadEvents()]);
+  } catch (error) {
+    agentError.value = error instanceof ApiError ? error.message : t("agent.error");
+  } finally {
+    agentApplying.value = false;
+  }
+}
+
+function discardPlan() {
+  agentPlan.value = null;
+  agentExecution.value = null;
+  agentError.value = "";
+}
 
 const notices = ref<Notice[]>([]);
 const noticeError = ref("");
@@ -260,6 +322,72 @@ onMounted(() => {
         <small>{{ t("admin.complete") }}</small>
       </article>
     </div>
+
+    <section class="agent">
+      <h2>{{ t("agent.title") }}</h2>
+      <p class="agent-hint">{{ t("agent.hint") }}</p>
+
+      <form class="agent-form" @submit.prevent="proposePlan">
+        <textarea
+          v-model="agentInstruction"
+          rows="2"
+          maxlength="1000"
+          :placeholder="t('agent.placeholder')"
+        ></textarea>
+        <button type="submit" :disabled="agentPlanning || !agentInstruction.trim()">
+          {{ agentPlanning ? t("agent.planning") : t("agent.plan") }}
+        </button>
+      </form>
+
+      <p v-if="agentError" class="auth-error">{{ agentError }}</p>
+
+      <!--
+        A plan is a proposal. It is rendered as a list an administrator can
+        read line by line, and the confirm button is the only thing that
+        touches the database.
+      -->
+      <article v-if="agentPlan" class="agent-plan">
+        <p class="agent-narrative">{{ agentPlan.narrative }}</p>
+
+        <template v-if="agentPlan.steps.length">
+          <strong>{{ t("agent.proposed") }}</strong>
+          <ol class="agent-steps">
+            <li v-for="(step, index) in agentPlan.steps" :key="index">
+              <code>{{ step.tool }}</code>
+              <span>{{ step.summary }}</span>
+            </li>
+          </ol>
+
+          <div class="agent-actions">
+            <button type="button" :disabled="agentApplying" @click="approvePlan">
+              {{ agentApplying ? t("agent.applying") : t("agent.approve") }}
+            </button>
+            <button type="button" class="agent-secondary" @click="discardPlan">
+              {{ t("agent.discard") }}
+            </button>
+          </div>
+        </template>
+
+        <p v-else class="agent-empty">{{ t("agent.nothingProposed") }}</p>
+      </article>
+
+      <article
+        v-if="agentExecution"
+        class="agent-result"
+        :class="{ partial: agentExecution.failure }"
+      >
+        <strong>
+          {{ agentExecution.failure ? t("agent.partial") : t("agent.applied") }}
+          ({{ agentExecution.completed }}/{{ agentExecution.total }})
+        </strong>
+        <ul>
+          <li v-for="(result, index) in agentExecution.results" :key="index">{{ result }}</li>
+        </ul>
+        <!-- Steps run in order and stop at the first failure, so saying which
+             step failed is what tells an administrator what to fix. -->
+        <p v-if="agentExecution.failure" class="agent-failure">{{ agentExecution.failure }}</p>
+      </article>
+    </section>
 
     <div class="admin-layout">
       <section class="admin-panel">

@@ -11,6 +11,7 @@ flowchart LR
     F --> A["Spring Boot<br/>7 controllers"]
     A -->|"cache-aside + rate limit"| R[("Redis")]
     A -->|"retrieval only"| AI["Sorting assistant<br/>RAG, FR/EN/ZH"]
+    A -->|"reads run, writes wait"| AG["Admin agent<br/>plan, then approve"]
     A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
     FW["Flyway V1-V6"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
@@ -23,6 +24,7 @@ flowchart LR
 | Persistence | MyBatis, MySQL (7 tables), Flyway (6 migrations) |
 | Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
 | Assistant | Retrieval-augmented Q&A over MySQL full-text; Claude optional |
+| Admin agent | Claude tool-use with a human approval step; plans held in Redis |
 | Auth | Spring Security, JWT (HMAC), BCrypt |
 | Delivery | Docker Compose, GitHub Actions |
 
@@ -66,6 +68,18 @@ Claude is optional — the default composer needs no API key and costs nothing.
 [`assistant/`](backend/src/main/java/com/bienvenueblainville/assistant),
 [measurements](docs/verification/assistant-results.md)
 
+**The admin agent proposes; a person approves.** An administrator types
+"Thursday's organics are delayed to Friday, tell residents" and gets back a
+plan — which rows would change, what the notice would say in all three
+languages — and nothing reaches the database until they confirm. The tool loop
+is hand-written rather than using the SDK's tool runner, because a tool runner
+executes every tool the model calls and cannot express "read the real
+schedule, but don't touch it". The line an administrator reads is generated
+from the arguments that will actually run, not asked of the model, so it
+cannot misrepresent them.
+[`agent/`](backend/src/main/java/com/bienvenueblainville/agent),
+[what was verified](docs/verification/agent-results.md)
+
 **Translation is a table, not a resource bundle.** `sorting_item_translation`
 and `sorting_item_keyword` hold the three languages and their search terms, so
 an admin can add a material in FR/EN/ZH without a redeploy, and search matches
@@ -90,6 +104,13 @@ an app that crashed on startup, admin endpoints throwing `ClassCastException`
 on every write, and a 401/403 mix-up that would have silently broken
 session-expiry handling in the browser. Full transcripts:
 [`docs/verification/verification-log.md`](docs/verification/verification-log.md).
+
+The admin agent went the same way, and writing its loop test found a bug that
+would have broken every write it proposed: `JsonValue.toString()` is a debug
+representation, not JSON, so parsing it worked for an empty tool input and
+failed the moment a call carried arguments. What ran for real and what was
+seeded:
+[`docs/verification/agent-results.md`](docs/verification/agent-results.md).
 
 The assistant went the same way. It scored 12/12 on retrieval and 5/6 on
 refusals before a question about the mayor's phone number came back answered
@@ -119,6 +140,10 @@ requests. Method, numbers, and honest caveats:
 <td><img src="docs/verification/screenshots/11-assistant-refusal.png" width="380" alt="Sorting assistant refusing a question the guide does not cover, styled differently from an answer" /><br />Assistant — refusing, and looking like it</td>
 </tr>
 <tr>
+<td><img src="docs/verification/screenshots/13-agent-plan.png" width="380" alt="Admin agent proposing two changes in an amber panel, with confirm and discard buttons" /><br />Admin agent — a proposal, not an action</td>
+<td><img src="docs/verification/screenshots/14-agent-applied.png" width="380" alt="Admin console after approving the plan, showing what ran and the notice count now reading 2" /><br />After approval — and the counts move</td>
+</tr>
+<tr>
 <td><img src="docs/verification/screenshots/05-home-logged-in-resident.png" width="380" alt="Home page after logging in through the real login form" /><br />Logged in as a resident</td>
 <td><img src="docs/verification/screenshots/09-admin-dashboard.png" width="380" alt="Admin dashboard showing real collection schedule, sorting item, and notice data from the backend" /><br />Admin dashboard — real CRUD data</td>
 </tr>
@@ -130,7 +155,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-49 tests: 30 unit, 19 integration.
+64 tests: 38 unit, 26 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -142,6 +167,9 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `AuthenticationFlowIntegrationTest` | 7 | full context, real MySQL, real filter chain |
 | `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
 | `AssistantIntegrationTest` | 7 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, rate limit |
+| `AdminAgentIntegrationTest` | 7 | real writes, single-use plans, plan ownership, validation, RBAC |
+| `AdminAgentServiceTest` | 4 | writes recorded not executed, reads executed, turn ceiling |
+| `StepSummariserTest` | 4 | the confirmation line, including missing arguments |
 | `QueryNormalizerTest` | 6 | stopword stripping, accent folding, per-language rules |
 | `SortingGuideRetrieverTest` | 4 | relevance cutoff, parser selection, empty-query short circuit |
 | `AssistantServiceTest` | 3 | the refusal rule: no context means no model call |

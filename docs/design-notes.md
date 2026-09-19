@@ -134,6 +134,22 @@ The same assistant works in Chinese, which needs a different full-text parser to
 
 *"废电池怎么处理？" — routed to the ecocentre entry, with its address.*
 
+### Admin Agent (Propose, then Approve)
+
+In the admin console, an administrator can describe a change in plain language instead of filling several forms. The agent reads the live schedule, then comes back with a plan. Nothing reaches the database until the **Confirmer et appliquer** button is pressed.
+
+<img src="verification/screenshots/13-agent-plan.png" width="600" alt="Admin agent proposing to move a collection and publish a notice, shown as a numbered list in an amber panel with confirm and discard buttons" />
+
+*One sentence in; two proposed changes out. The amber panel is deliberately not the colour of a completed action — at this point nothing has happened.*
+
+<img src="verification/screenshots/14-agent-applied.png" width="600" alt="The same console after approval, listing the two changes that ran and showing the notice count increased to 2" />
+
+*After approval. The notice count in the summary cards moved from 1 to 2 — those reload from the API, so that number is the write showing up through a separate code path.*
+
+Without an API key the agent says so, and points at the forms that do the same job:
+
+<img src="verification/screenshots/15-agent-unconfigured.png" width="600" alt="The admin agent panel showing a message that it is not configured and the forms below do everything it does" />
+
 ### Seasonal and Special Collection Reminders
 
 The app includes reminders for collection services that do not fit into regular bin pickup.
@@ -277,6 +293,11 @@ The backend `PUT /{id}` endpoints for schedule and sorting items work, but the a
 - Retrieval-augmented Q&A over MySQL full-text search (two parsers: word for French/English, ngram for Chinese)
 - Anthropic Java SDK, optional - a no-API-key composer is the default
 
+### Admin agent
+
+- Claude tool use over the existing admin services, with a hand-written loop
+- Proposed changes held in Redis until an administrator approves them
+
 ### DevOps and Tooling
 
 - Docker
@@ -360,6 +381,16 @@ The sorting guide is the kind of thing residents ask in their own words ("la bo�
 So the model is never asked what the rule is. Retrieval finds the guide entries from MySQL; the model is handed those entries and asked to phrase them. If retrieval finds nothing, `AssistantService` refuses without calling a model at all - the grounding rule lives above the composer, so it cannot be prompted away or lost when the composer is swapped.
 
 The same reasoning decides the default: the `template` composer answers from the retrieved entry with no model involved. It is not a stub. Retrieval has already done the hard part, and reading the entry back in the resident's language is genuinely useful - so a fresh clone with no API key gets a working feature, CI gets something deterministic to assert on, and the Claude-backed composer has a baseline to be measured against rather than merely assumed better than.
+
+### Why the admin agent's loop is hand-written
+
+The Anthropic SDK ships a tool runner that drives the whole request → execute → loop cycle for you, and using it here would have been about half the code. It is the wrong shape for this problem. A tool runner executes every tool the model calls; what this needs is "look at the real schedule, but do not touch it".
+
+So the loop is written out: read tools run immediately, so the model plans against live rows with real ids, and write tools are recorded as proposed steps that wait for a person. That split is the feature. Everything else - the fifteen-minute plan TTL, the single-use consumption, binding a plan to the administrator it was shown to - follows from taking the approval step seriously rather than treating it as a dialog box.
+
+A related decision worth stating because it is easy to get wrong: the line an administrator reads before approving is generated in Java from the arguments that will run, not asked of the model. Those would otherwise be two independent outputs with nothing forcing them to agree, and someone could approve "move Thursday's organics to Friday" over arguments that said something else.
+
+Is it necessary? No - the admin forms already work, and the agent calls the same services they do. It is a convenience layer, and worth it for the case that motivated it: a storm delay means moving several schedule rows and publishing a trilingual notice, which is six or seven form submissions and six or seven chances to typo a date.
 
 ### Why the assistant endpoint is rate-limited when nothing else is
 
@@ -703,6 +734,7 @@ Completed:
 - Seasonal and special collection reminder data.
 - Location and address support for special sorting records.
 - French, English, and Chinese i18n foundation, including the auth and admin flows.
+- An admin agent (`POST /api/admin/agent/plan`, `POST /api/admin/agent/plans/{id}/execute`): Claude tool use over the existing collection and notice services, where read tools execute during planning and write tools are recorded as a plan for a human to approve. Plans live in Redis for 15 minutes, are single-use, and are bound to the administrator they were shown to. Returns 503 with an explanation when no API key is configured.
 - A grounded trilingual sorting assistant (`POST /api/assistant/ask`): MySQL full-text retrieval over `sorting_item_translation`/`sorting_item_keyword` with two parsers (word for French/English, ngram for Chinese), an application-side stopword filter, an explicit refusal when nothing relevant is retrieved, per-IP rate limiting in Redis, and a pluggable composer that is either a no-cost template or Claude. Scored 12/12 precision@1 and 6/6 refusal accuracy over an 18-question set.
 - Redis cache-aside layer over the two hot public reads (`@Cacheable` on the upcoming schedule and the active notices, keyed by day so nothing goes stale at midnight), with `@CacheEvict` on every admin write, a `CacheErrorHandler` that degrades to MySQL instead of failing the request, and fail-fast Lettuce options so a dead Redis costs milliseconds rather than seconds. Fully optional at runtime via `CACHE_TYPE=none`.
 - Docker Compose setup for MySQL, Redis, and backend.
@@ -769,6 +801,14 @@ Getting the refusals right took two rounds of measurement, and both findings wer
 2. The word parser then answered "Quel est le numéro de téléphone du maire ?" with household-waste advice, entirely on the word **est** - InnoDB's built-in stopword list is English-only. Fixed in the application rather than by a server variable someone has to remember to set.
 
 Full transcripts, per-word score breakdowns and the browser screenshots are in [`verification/assistant-results.md`](verification/assistant-results.md).
+
+### What did the admin agent actually do, and what was faked?
+
+The planning call needs an Anthropic key that this project's build environment does not have, so it was seeded rather than generated. Everything downstream ran for real against the live stack: a plan was written into Redis, the browser was driven to the admin console, and clicking **Confirmer et appliquer** moved collection event 6 from 2026-09-24 to 2026-09-25 with a trilingual note and created notice 10 - both verified by querying MySQL afterwards, with the Redis plan key consumed. The console's own summary cards went from 1 notice to 2, which is the write showing up through a separate code path.
+
+Writing the tool-loop test also found a bug that would have broken every write the agent proposed: `JsonValue.toString()` is a debug representation rather than JSON, so parsing it succeeded for an empty tool input (`list_collections`) and failed the moment a call carried arguments (`create_collection`). A test exercising only the read path would have missed it.
+
+Full transcripts, the authorization checks, and the screenshots: [`verification/agent-results.md`](verification/agent-results.md).
 
 ## Security Notes
 
