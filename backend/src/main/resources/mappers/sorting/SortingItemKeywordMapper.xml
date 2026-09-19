@@ -16,6 +16,10 @@
         </foreach>
     </insert>
 
+    <select id="findAll" resultType="com.bienvenueblainville.sorting.SortingItemKeyword">
+        select id, item_id, language_code, keyword from sorting_item_keyword
+    </select>
+
     <delete id="deleteByItemId">
         delete from sorting_item_keyword where item_id = #{itemId}
     </delete>

@@ -8,6 +8,8 @@ public record SortingItemTranslation(
         LanguageCode languageCode,
         String name,
         String instruction,
-        String location
+        String location,
+        /** Seasonal or on-request wording, e.g. "free collection in May, June and October". */
+        String availability
 ) {
 }

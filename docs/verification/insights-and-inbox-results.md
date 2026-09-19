@@ -184,3 +184,96 @@ NoticeEventPipelineIntegrationTest     5 tests   outbox, relay, both consumer gr
 AssistantIntegrationTest              11 tests   including cache hit, normalization, invalidation
 QueryEventPublisherTest                4 tests   the gate, and both failure modes
 ```
+
+---
+
+# The Split That Should Not Have Existed
+
+The audit that produced the three features above also named a defect, and this
+is the fix.
+
+## What was wrong
+
+The sorting guide existed **twice**:
+
+| | Read by |
+|---|---|
+| `frontend/src/data/sortingGuide.ts` | the cards residents actually look at |
+| MySQL `sorting_item` + translations + keywords | the assistant, the photo lookup, the admin console |
+
+So an administrator could correct an entry, watch the admin console update,
+watch the assistant start giving the new answer — and the page residents open
+would still show the old text. The two datasets had also drifted: 12 entries
+against 15, with different wording.
+
+## Why it survived this long
+
+The static file held two things the database had no column for:
+
+- `examples` — the short "fruits, legumes, pain" list under each card
+- `availability` — seasonal or on-request wording ("free collection in May,
+  June and October")
+
+Deleting the file would have silently dropped both. That is why this was a
+migration rather than a delete.
+
+## The fix
+
+**V10** adds `availability` to `sorting_item_translation` and a
+`sorting_item_example` table — a table rather than a delimited column, because
+examples are ordered, per language, and edited one at a time.
+
+**V11** carries the data over, generated from the static file rather than
+typed by hand: 192 statements across 12 items and three languages is exactly
+the kind of transcription where a silent mistake hides.
+
+**V10 also merges a duplicate.** Rows 4 and 14 were the same municipal service
+seeded twice — "Personal documents for shredding" and "Personal document
+shredding". Residents saw two cards for one service, and full-text relevance
+was split across both, pushing the real entry *down* the results. Row 14 is
+strictly richer (it carries the ecocentre address and the actual conditions),
+so row 4's keywords were merged into it before it was deleted, rather than
+discarding search terms residents might use.
+
+## Verified against the running stack
+
+```text
+GET /api/sorting-items            → item 6 fr = "Papiers et cartons souilles d aliments"
+                                    examples  = [boite a pizza, assiette en carton, ...]
+                                    14 entries
+
+PUT /api/admin/sorting-items/6    → 200   (admin renames it)
+
+GET /api/sorting-items            → item 6 fr = "CARTONS SOUILLES (modifie par admin)"
+                                    examples  = [boite a pizza, assiette en carton]
+```
+
+The second read is the endpoint the resident page calls. Before this change
+that page would still have said the old name.
+
+Then the dev database was dropped and rebuilt from migrations alone, and a
+real browser loaded the page with nothing intercepted:
+
+```text
+API calls made by the page: [sorting-items]
+cards rendered:   14
+reminder cards:    5     (the seasonal `availability` entries)
+first card:       "Restes de fruits et legumes", 9 examples
+same page in zh:  "水果和蔬菜残渣"
+shredding entries: 1     (was 2)
+```
+
+`SortingGuideIntegrationTest` pins all of it, including the one assertion that
+would catch a future split: the number of entries the public endpoint returns
+must equal the number of rows the assistant searches.
+
+## Two smaller ones, fixed in passing
+
+- **The photo button said "uploading" for the whole call**, including the
+  identification, which is the slower half — so it looked like a stalled
+  upload. It now reports the two phases separately.
+- **Admin edits would have dropped the new fields.** Adding columns is not
+  enough: `SortingItemService` had to persist `examples` and `availability` on
+  create and update, or the first admin edit after the migration would have
+  wiped exactly the data the migration existed to preserve. Pinned by
+  `SortingItemServiceTest.createStoresTheExamplesAndAvailabilityThatUsedToLiveInTheFrontend`.

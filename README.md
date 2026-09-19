@@ -25,7 +25,7 @@ flowchart LR
     AI -->|"fire and forget"| K2["Kafka<br/>query stream"]
     K2 --> MG[("MongoDB<br/>gap report")]
     A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
-    FW["Flyway V1-V9"] -.->|"migrates on startup"| D
+    FW["Flyway V1-V11"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
 ```
 
@@ -33,7 +33,7 @@ flowchart LR
 |---|---|
 | Frontend | Vue 3, TypeScript, Pinia, Vite |
 | API | Spring Boot, Java 21 |
-| Persistence | MyBatis, MySQL (11 tables), Flyway (9 migrations) |
+| Persistence | MyBatis, MySQL (12 tables), Flyway (11 migrations) |
 | Events | Transactional outbox → Kafka, two consumer groups |
 | Photos | S3 presigned upload, Lambda (EXIF strip + resize), API Gateway, vision lookup |
 | Audit trail | MongoDB or MySQL JSON, same interface and same tests |
@@ -247,7 +247,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-115 tests: 62 unit, 53 integration.
+122 tests: 63 unit, 59 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -264,6 +264,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `PhotoPipelineIntegrationTest` | 7 | real S3: presign, upload, Lambda, prefix isolation, path validation |
 | `PhotoProcessorTest` | 5 | EXIF GPS stripped, including when no resize is needed |
 | `PhotoSortingServiceTest` | 6 | the model names, the guide decides; refusal when the guide has no entry |
+| `SortingGuideIntegrationTest` | 6 | one source of truth: examples, ordering, seasonal wording, the merged duplicate |
 | `ResidentQueryInsightsIntegrationTest` | 5 | question → Kafka → MongoDB → gap report, and no resident identified |
 | `QueryEventPublisherTest` | 4 | the events gate, and both failure modes kept apart |
 | `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
@@ -301,7 +302,7 @@ cd backend && mvn test -Pintegration-test
 ```bash
 cp .env.example .env          # set DB_URL, DB_USERNAME, DB_PASSWORD,
                               # APP_JWT_SECRET, APP_ADMIN_EMAIL, APP_ADMIN_PASSWORD
-docker compose up -d --build  # MySQL + Redis + Kafka + MongoDB + backend; Flyway V1-V9
+docker compose up -d --build  # MySQL + Redis + Kafka + MongoDB + backend; Flyway V1-V11
 cd frontend && npm ci && npm run dev
 ```
 
@@ -320,10 +321,13 @@ many hours) and proxy-aware (it keys on `getRemoteAddr()`, so a reverse proxy
 needs a trusted-proxy boundary configured before deployment). Set spending
 controls at the provider before exposing a paid composer publicly.
 
-One known inconsistency: the resident sorting cards still render
-`frontend/src/data/sortingGuide.ts`, while the assistant and the admin console
-read MySQL — so an admin edit does not change those cards. Unifying the two is
-outstanding work.
+The sorting guide has one source. It used to have two — the resident cards
+rendered a TypeScript file bundled with the frontend while the assistant, the
+photo lookup and the admin console read MySQL, so an administrator could
+correct an entry and the page everybody actually reads would not change.
+Migrations V10 and V11 moved the two fields the database was missing
+(`examples` and seasonal `availability`), merged a duplicate entry that had
+been splitting its own relevance score, and the static file is gone.
 
 [The September 19 review](docs/review-2026-09-19.md) has the rest: fixes,
 remaining limitations, and an assessment of the infrastructure still proposed.

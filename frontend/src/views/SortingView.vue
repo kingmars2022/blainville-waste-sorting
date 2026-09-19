@@ -1,13 +1,38 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "../useI18n";
-import { sortingGuide, type DestinationType } from "../data/sortingGuide";
+import {
+  fetchSortingGuide,
+  keywordsFor,
+  translationFor,
+  type DestinationType,
+  type SortingItem
+} from "../api/sortingGuide";
 import { askAssistant, type AssistantAnswer } from "../api/assistant";
 import { askAboutPhoto, type PhotoAnswer } from "../api/photo";
 import { ApiError } from "../api/client";
 
 const { language, t } = useI18n();
 const query = ref("");
+
+/**
+ * The guide, from the API.
+ *
+ * <p>This used to be a TypeScript file bundled with the frontend, which meant
+ * an administrator could correct an entry and the page residents actually
+ * read would not change. One source of truth now, and it is the database the
+ * assistant and the admin console already used.
+ */
+const items = ref<SortingItem[]>([]);
+const guideError = ref("");
+
+onMounted(async () => {
+  try {
+    items.value = await fetchSortingGuide();
+  } catch {
+    guideError.value = t("sorting.loadFailed");
+  }
+});
 
 const assistantQuestion = ref("");
 const assistantAnswer = ref<AssistantAnswer | null>(null);
@@ -60,7 +85,13 @@ async function onPhotoChosen(event: Event) {
 
   try {
     photoStage.value = "uploading";
-    const result = await askAboutPhoto(file, language.value);
+    const result = await askAboutPhoto(file, language.value, () => {
+      // Upload done, identification starting. Without this the button said
+      // "uploading" for the whole call, including the slowest part.
+      if (version === requestVersion) {
+        photoStage.value = "identifying";
+      }
+    });
     if (version === requestVersion) {
       photoAnswer.value = result.answer;
     }
@@ -105,20 +136,31 @@ const activeDestination = ref<DestinationType | "all">("all");
 
 const destinations: Array<DestinationType | "all"> = ["all", "organic", "recycling", "garbage", "ecocentre"];
 
-const specialReminderItems = computed(() => sortingGuide.filter((item) => item.availability));
+// Entries with seasonal or on-request wording in the current language: the
+// "when and how" cards at the top of the page.
+const specialReminderItems = computed(() =>
+  items.value.filter((item) => translationFor(item, language.value)?.availability)
+);
 
 const filteredItems = computed(() => {
   const normalizedQuery = query.value.trim().toLocaleLowerCase();
 
-  return sortingGuide.filter((item) => {
+  return items.value.filter((item) => {
     const matchesDestination =
-      activeDestination.value === "all" || item.destination === activeDestination.value;
+      activeDestination.value === "all" || item.destinationType === activeDestination.value;
+
+    const translation = translationFor(item, language.value);
+    if (!translation) {
+      // Not translated into this language yet. Hidden rather than shown in
+      // another one, so the gap is visible as a gap.
+      return false;
+    }
 
     const searchableText = [
-      item.names[language.value],
-      item.instruction[language.value],
-      ...item.examples[language.value],
-      ...item.keywords[language.value]
+      translation.name,
+      translation.instruction,
+      ...translation.examples,
+      ...keywordsFor(item, language.value)
     ]
       .join(" ")
       .toLocaleLowerCase();
@@ -244,9 +286,9 @@ function destinationLabel(destination: DestinationType | "all") {
       <h2>{{ t("sorting.specialReminders") }}</h2>
       <div class="reminder-list">
         <article v-for="item in specialReminderItems" :key="item.id" class="reminder-card">
-          <span>{{ destinationLabel(item.destination) }}</span>
-          <strong>{{ item.names[language] }}</strong>
-          <p>{{ item.availability?.[language] }}</p>
+          <span>{{ destinationLabel(item.destinationType) }}</span>
+          <strong>{{ translationFor(item, language)?.name }}</strong>
+          <p>{{ translationFor(item, language)?.availability }}</p>
         </article>
       </div>
     </section>
@@ -265,7 +307,9 @@ function destinationLabel(destination: DestinationType | "all") {
       </button>
     </div>
 
-    <div v-if="filteredItems.length === 0" class="empty">
+    <p v-if="guideError" class="assistant-error">{{ guideError }}</p>
+
+    <div v-else-if="filteredItems.length === 0" class="empty">
       {{ t("sorting.noResults") }}
     </div>
 
@@ -277,29 +321,37 @@ function destinationLabel(destination: DestinationType | "all") {
         :class="item.binColor"
       >
         <div>
-          <span class="tag">{{ destinationLabel(item.destination) }}</span>
-          <h2>{{ item.names[language] }}</h2>
-          <p>{{ item.instruction[language] }}</p>
+          <span class="tag">{{ destinationLabel(item.destinationType) }}</span>
+          <h2>{{ translationFor(item, language)?.name }}</h2>
+          <p>{{ translationFor(item, language)?.instruction }}</p>
         </div>
 
-        <div>
+        <div v-if="translationFor(item, language)?.examples.length">
           <strong>{{ t("sorting.examples") }}</strong>
           <ul>
-            <li v-for="example in item.examples[language]" :key="example">{{ example }}</li>
+            <li
+              v-for="example in translationFor(item, language)?.examples"
+              :key="example"
+            >{{ example }}</li>
           </ul>
         </div>
 
-        <div v-if="item.availability" class="availability">
+        <div v-if="translationFor(item, language)?.availability" class="availability">
           <strong>{{ t("sorting.availability") }}</strong>
-          <p>{{ item.availability[language] }}</p>
+          <p>{{ translationFor(item, language)?.availability }}</p>
         </div>
 
-        <div v-if="item.location" class="availability">
+        <div v-if="translationFor(item, language)?.location" class="availability">
           <strong>{{ t("sorting.location") }}</strong>
-          <p>{{ item.location[language] }}</p>
+          <p>{{ translationFor(item, language)?.location }}</p>
         </div>
 
-        <a :href="item.sourceUrl" target="_blank" rel="noreferrer">{{ t("sorting.source") }}</a>
+        <a
+          v-if="item.sourceUrl"
+          :href="item.sourceUrl"
+          target="_blank"
+          rel="noreferrer"
+        >{{ t("sorting.source") }}</a>
       </article>
     </div>
   </section>

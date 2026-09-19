@@ -10,12 +10,16 @@ import java.util.List;
 public interface SortingItemTranslationMapper {
     List<SortingItemTranslation> findByItemId(@Param("itemId") Long itemId);
 
+    /** All of them, for the public guide. */
+    List<SortingItemTranslation> findAll();
+
     void insert(
             @Param("itemId") Long itemId,
             @Param("languageCode") LanguageCode languageCode,
             @Param("name") String name,
             @Param("instruction") String instruction,
-            @Param("location") String location
+            @Param("location") String location,
+            @Param("availability") String availability
     );
 
     void deleteByItemId(@Param("itemId") Long itemId);

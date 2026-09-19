@@ -760,7 +760,7 @@ Completed:
 - `HomeView` calls `GET /api/collections/upcoming` for the signed-in resident's sector and shows the real next collection (today/tomorrow framing, put-out/bring-back guidance) plus a short list of upcoming collections, instead of static sample data.
 - MyBatis mapper foundation and a normalized 7-table MySQL schema.
 - Flyway migrations for schema and seed data, including a rolling collection calendar seed (`V6`) so the home page has real upcoming dates to show.
-- Static multilingual sorting guide data on the frontend (sorting search is not yet backend-driven — see Limitations).
+- The sorting guide served from MySQL to residents, the assistant, the photo lookup and the admin console alike (`GET /api/sorting-items`). It previously existed twice - a TypeScript file for the resident cards and the database for everything else - so an admin edit changed one and not the other. Migrations V10/V11 carried the two fields only the static copy had (`examples`, seasonal `availability`) and merged a duplicate entry.
 - Seasonal and special collection reminder data.
 - Location and address support for special sorting records.
 - French, English, and Chinese i18n foundation, including the auth and admin flows.
@@ -779,7 +779,6 @@ Completed:
 
 Planned or in progress:
 
-- Sorting search backed by the `sorting_item` / `sorting_item_translation` / `sorting_item_keyword` tables instead of the static frontend dataset. *(The assistant already queries those tables; the grid below it still renders the static dataset.)*
 - Edit support for existing collection schedule and sorting item admin entries (currently create/list/delete only in the UI — the backend `PUT /{id}` endpoints already support it).
 - Complete import of official Blainville sorting records.
 - Future-year collection calendar import.

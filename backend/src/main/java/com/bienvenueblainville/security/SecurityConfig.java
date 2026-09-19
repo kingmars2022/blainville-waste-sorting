@@ -46,6 +46,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/collections/**").permitAll()
                         .requestMatchers("/api/notices/active").permitAll()
+                        // The sorting guide itself. Public, because it is the
+                        // page residents come for.
+                        .requestMatchers(HttpMethod.GET, "/api/sorting-items").permitAll()
                         // Public like the rest of the guide, but the only
                         // endpoint that can cost money per call - see
                         // AssistantRateLimiter for what stands in for auth here.

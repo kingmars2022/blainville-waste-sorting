@@ -51,9 +51,16 @@ function identify(photoId: string, language: Language) {
   );
 }
 
-/** Ticket, upload, then identify — the three steps, in order. */
-export async function askAboutPhoto(file: File, language: Language) {
+/**
+ * Ticket, upload, then identify — the three steps, in order.
+ *
+ * @param onUploaded called once the bytes are in storage, so the caller can
+ *   change what the button says; identification is the slower half and looked
+ *   like a stalled upload without it
+ */
+export async function askAboutPhoto(file: File, language: Language, onUploaded?: () => void) {
   const ticket = await requestUploadUrl(file);
   await uploadToStorage(ticket, file);
+  onUploaded?.();
   return { photoId: ticket.photoId, answer: await identify(ticket.photoId, language) };
 }

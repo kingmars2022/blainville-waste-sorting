@@ -21,17 +21,20 @@ public class SortingItemService {
     private final SortingItemMapper itemMapper;
     private final SortingItemTranslationMapper translationMapper;
     private final SortingItemKeywordMapper keywordMapper;
+    private final SortingItemExampleMapper exampleMapper;
     private final AnswerCache answerCache;
 
     public SortingItemService(
             SortingItemMapper itemMapper,
             SortingItemTranslationMapper translationMapper,
             SortingItemKeywordMapper keywordMapper,
+            SortingItemExampleMapper exampleMapper,
             AnswerCache answerCache
     ) {
         this.itemMapper = itemMapper;
         this.translationMapper = translationMapper;
         this.keywordMapper = keywordMapper;
+        this.exampleMapper = exampleMapper;
         this.answerCache = answerCache;
     }
 
@@ -62,6 +65,9 @@ public class SortingItemService {
         requireItem(id);
         itemMapper.update(id, request.destinationType(), request.binColor(), request.sourceUrl());
 
+        // Examples go with their translations - deleting one without the other
+        // leaves orphan rows that would reappear under the next edit.
+        exampleMapper.deleteByItemId(id);
         translationMapper.deleteByItemId(id);
         keywordMapper.deleteByItemId(id);
         saveTranslationsAndKeywords(id, request);
@@ -76,6 +82,7 @@ public class SortingItemService {
 
         requireItem(id);
         keywordMapper.deleteByItemId(id);
+        exampleMapper.deleteByItemId(id);
         translationMapper.deleteByItemId(id);
         itemMapper.delete(id);
         answerCache.invalidateAll();
@@ -92,7 +99,19 @@ public class SortingItemService {
     }
 
     private void insertTranslation(Long itemId, LanguageCode languageCode, TranslationInput input) {
-        translationMapper.insert(itemId, languageCode, input.name(), input.instruction(), input.location());
+        translationMapper.insert(itemId, languageCode, input.name(), input.instruction(),
+                input.location(), input.availability());
+        insertExamples(itemId, languageCode, input.examples());
+    }
+
+    private void insertExamples(Long itemId, LanguageCode languageCode, List<String> examples) {
+        List<String> cleaned = examples == null
+                ? List.of()
+                : examples.stream().map(String::trim).filter(e -> !e.isEmpty()).toList();
+
+        if (!cleaned.isEmpty()) {
+            exampleMapper.insertBatch(itemId, languageCode, cleaned);
+        }
     }
 
     private void insertKeywords(Long itemId, LanguageCode languageCode, List<String> keywords) {
@@ -110,14 +129,59 @@ public class SortingItemService {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Sorting item " + id + " not found"));
     }
 
-    private SortingItemResponse toResponse(SortingItem item) {
-        Map<LanguageCode, SortingItemTranslation> translations = translationMapper.findByItemId(item.id()).stream()
-                .collect(Collectors.toMap(SortingItemTranslation::languageCode, t -> t));
+    /**
+     * The whole guide, for residents.
+     *
+     * <p>Four queries in total rather than four per item: at 15 items and three
+     * languages the per-item version is 45 extra round trips to render one
+     * page. This is the read that replaced the frontend's static copy of the
+     * guide, so it is the one that has to be cheap.
+     */
+    public List<SortingItemResponse> guide() {
+        Map<Long, List<SortingItemTranslation>> translations = translationMapper.findAll().stream()
+                .collect(Collectors.groupingBy(SortingItemTranslation::itemId));
+        Map<Long, List<SortingItemKeyword>> keywords = keywordMapper.findAll().stream()
+                .collect(Collectors.groupingBy(SortingItemKeyword::itemId));
+        Map<Long, List<SortingItemExample>> examples = exampleMapper.findAll().stream()
+                .collect(Collectors.groupingBy(SortingItemExample::itemId));
 
-        Map<LanguageCode, List<String>> keywords = keywordMapper.findByItemId(item.id()).stream()
+        return itemMapper.findAll().stream()
+                .map(item -> toResponse(
+                        item,
+                        translations.getOrDefault(item.id(), List.of()),
+                        keywords.getOrDefault(item.id(), List.of()),
+                        examples.getOrDefault(item.id(), List.of())))
+                .toList();
+    }
+
+    private SortingItemResponse toResponse(SortingItem item) {
+        return toResponse(
+                item,
+                translationMapper.findByItemId(item.id()),
+                keywordMapper.findByItemId(item.id()),
+                exampleMapper.findByItemId(item.id()));
+    }
+
+    private SortingItemResponse toResponse(
+            SortingItem item,
+            List<SortingItemTranslation> translationRows,
+            List<SortingItemKeyword> keywordRows,
+            List<SortingItemExample> exampleRows
+    ) {
+        Map<LanguageCode, SortingItemTranslation> translations = translationRows.stream()
+                .collect(Collectors.toMap(SortingItemTranslation::languageCode, t -> t, (a, b) -> a));
+
+        Map<LanguageCode, List<String>> keywords = keywordRows.stream()
                 .collect(Collectors.groupingBy(
                         SortingItemKeyword::languageCode,
                         Collectors.mapping(SortingItemKeyword::keyword, Collectors.toList())
+                ));
+
+        Map<LanguageCode, List<String>> examples = exampleRows.stream()
+                .sorted(java.util.Comparator.comparingInt(SortingItemExample::position))
+                .collect(Collectors.groupingBy(
+                        SortingItemExample::languageCode,
+                        Collectors.mapping(SortingItemExample::example, Collectors.toList())
                 ));
 
         return new SortingItemResponse(
@@ -125,19 +189,24 @@ public class SortingItemService {
                 item.destinationType(),
                 item.binColor(),
                 item.sourceUrl(),
-                toView(translations.get(LanguageCode.fr)),
-                toView(translations.get(LanguageCode.en)),
-                toView(translations.get(LanguageCode.zh)),
+                toView(translations.get(LanguageCode.fr), examples.get(LanguageCode.fr)),
+                toView(translations.get(LanguageCode.en), examples.get(LanguageCode.en)),
+                toView(translations.get(LanguageCode.zh), examples.get(LanguageCode.zh)),
                 keywords.getOrDefault(LanguageCode.fr, Collections.emptyList()),
                 keywords.getOrDefault(LanguageCode.en, Collections.emptyList()),
                 keywords.getOrDefault(LanguageCode.zh, Collections.emptyList())
         );
     }
 
-    private TranslationView toView(SortingItemTranslation translation) {
+    private TranslationView toView(SortingItemTranslation translation, List<String> examples) {
         if (translation == null) {
             return null;
         }
-        return new TranslationView(translation.name(), translation.instruction(), translation.location());
+        return new TranslationView(
+                translation.name(),
+                translation.instruction(),
+                translation.location(),
+                translation.availability(),
+                examples == null ? Collections.emptyList() : examples);
     }
 }

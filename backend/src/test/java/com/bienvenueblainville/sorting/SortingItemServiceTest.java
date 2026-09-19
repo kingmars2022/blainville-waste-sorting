@@ -34,7 +34,9 @@ class SortingItemServiceTest {
     private SortingItemTranslationMapper translationMapper;
     @Mock
     private SortingItemKeywordMapper keywordMapper;
-    @Mock
+        @Mock
+    private SortingItemExampleMapper exampleMapper;
+@Mock
     private AnswerCache answerCache;
 
     private SortingItemService service;
@@ -42,7 +44,7 @@ class SortingItemServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        service = new SortingItemService(itemMapper, translationMapper, keywordMapper, answerCache);
+        service = new SortingItemService(itemMapper, translationMapper, keywordMapper, exampleMapper, answerCache);
     }
 
     private SortingItemRequest sampleRequest() {
@@ -50,9 +52,12 @@ class SortingItemServiceTest {
                 DestinationType.organic,
                 BinColor.brown,
                 "https://blainville.ca/example",
-                new TranslationInput("Restes de fruits", "Bac brun", "Bordure de rue"),
-                new TranslationInput("Fruit scraps", "Brown bin", "Curbside"),
-                new TranslationInput("水果残渣", "棕桶", "路边"),
+                new TranslationInput("Restes de fruits", "Bac brun", "Bordure de rue",
+                        "Toute l'annee", List.of("pommes", " poires ", "")),
+                new TranslationInput("Fruit scraps", "Brown bin", "Curbside",
+                        "Year round", List.of("apples", "pears")),
+                new TranslationInput("水果残渣", "棕桶", "路边",
+                        "全年", List.of("苹果", "梨")),
                 List.of("fruit", " legume ", ""),
                 List.of("fruit"),
                 List.of("水果")
@@ -80,9 +85,35 @@ class SortingItemServiceTest {
         SortingItemResponse response = service.create(sampleRequest());
 
         assertThat(response.id()).isEqualTo(42L);
-        verify(translationMapper).insert(eq(42L), eq(LanguageCode.fr), any(), any(), any());
-        verify(translationMapper).insert(eq(42L), eq(LanguageCode.en), any(), any(), any());
-        verify(translationMapper).insert(eq(42L), eq(LanguageCode.zh), any(), any(), any());
+        verify(translationMapper).insert(eq(42L), eq(LanguageCode.fr), any(), any(), any(), any());
+        verify(translationMapper).insert(eq(42L), eq(LanguageCode.en), any(), any(), any(), any());
+        verify(translationMapper).insert(eq(42L), eq(LanguageCode.zh), any(), any(), any(), any());
+    }
+
+    @Test
+    void createStoresTheExamplesAndAvailabilityThatUsedToLiveInTheFrontend() {
+        // The regression this guards: the resident-facing cards moved from a
+        // static TypeScript file into the database, and their examples and
+        // seasonal wording came with them. An admin edit that silently dropped
+        // either would recreate the split those fields were moved to end.
+        doAnswer(invocation -> {
+            Map<String, Object> params = invocation.getArgument(0);
+            params.put("id", java.math.BigInteger.valueOf(42));
+            return null;
+        }).when(itemMapper).insert(any());
+
+        when(itemMapper.findById(42L)).thenReturn(Optional.of(
+                new SortingItem(42L, DestinationType.organic, BinColor.brown, null)));
+        when(translationMapper.findByItemId(42L)).thenReturn(List.of());
+        when(keywordMapper.findByItemId(42L)).thenReturn(List.of());
+        when(exampleMapper.findByItemId(42L)).thenReturn(List.of());
+
+        service.create(sampleRequest());
+
+        verify(translationMapper).insert(eq(42L), eq(LanguageCode.en), any(), any(), any(), eq("Year round"));
+        // Blank entries trimmed away, order preserved.
+        verify(exampleMapper).insertBatch(eq(42L), eq(LanguageCode.fr), eq(List.of("pommes", "poires")));
+        verify(exampleMapper).insertBatch(eq(42L), eq(LanguageCode.zh), eq(List.of("苹果", "梨")));
     }
 
     @Test

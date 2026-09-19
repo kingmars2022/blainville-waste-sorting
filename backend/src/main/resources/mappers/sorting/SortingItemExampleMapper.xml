@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bienvenueblainville.sorting.SortingItemExampleMapper">
+    <sql id="columns">id, item_id, language_code, position, example</sql>
+
+    <select id="findByItemId" resultType="com.bienvenueblainville.sorting.SortingItemExample">
+        select <include refid="columns"/>
+        from sorting_item_example
+        where item_id = #{itemId}
+        <!-- The order an administrator typed them in is the order a resident
+             should read them, so it is stored rather than inferred. -->
+        order by language_code, position
+    </select>
+
+    <select id="findAll" resultType="com.bienvenueblainville.sorting.SortingItemExample">
+        select <include refid="columns"/>
+        from sorting_item_example
+        order by item_id, language_code, position
+    </select>
+
+    <insert id="insertBatch">
+        insert into sorting_item_example (item_id, language_code, position, example)
+        values
+        <foreach collection="examples" item="example" index="index" separator=",">
+            (#{itemId}, #{languageCode}, #{index}, #{example})
+        </foreach>
+    </insert>
+
+    <delete id="deleteByItemId">
+        delete from sorting_item_example where item_id = #{itemId}
+    </delete>
+</mapper>
