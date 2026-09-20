@@ -9,11 +9,13 @@ import com.drew.imaging.ImageMetadataReader;
 import com.drew.metadata.exif.GpsDirectory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -26,13 +28,20 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 /**
  * The photo path end to end against a real S3 API: sign, upload, process, serve.
@@ -65,6 +74,21 @@ class PhotoPipelineIntegrationTest {
 
     @Autowired
     private S3Client s3;
+
+    @Autowired
+    private StringRedisTemplate redis;
+
+    @BeforeEach
+    void clearTheSharedQuota() {
+        // Every endpoint here counts against the assistant's per-IP quota, and
+        // the counter lives in real Redis keyed by the hour - so it survives
+        // between runs, and a suite run twice inside an hour used to start
+        // failing with 429s that had nothing to do with the code under test.
+        Set<String> keys = redis.keys("assistant:ratelimit:*");
+        if (keys != null && !keys.isEmpty()) {
+            redis.delete(keys);
+        }
+    }
 
     @Test
     void aResidentUploadsStraightToS3AndOnlyTheStrippedCopyIsServed() throws Exception {
@@ -121,6 +145,66 @@ class PhotoPipelineIntegrationTest {
         assertThat(s3.getObjectAsBytes(GetObjectRequest.builder()
                 .bucket(LocalS3.BUCKET).key("original/" + photoId).build()).asByteArray())
                 .isEqualTo(photo);
+    }
+
+    @Test
+    void anAnswerAskedForBeforeTheLambdaHasRunWaitsForItInsteadOfSayingNotFound() throws Exception {
+        // The race this closes: the browser uploads and asks for an answer
+        // straight away, but S3 triggers the Lambda asynchronously. Nothing
+        // waited, so the first read found nothing and the resident was told
+        // the photo did not exist. Every other test here invokes the handler
+        // before asking, which is exactly why none of them saw it.
+        String photoId = uploadWithoutProcessing();
+
+        // The Lambda finishes a second and a half in, while the request is
+        // already waiting.
+        ScheduledExecutorService lambda = Executors.newSingleThreadScheduledExecutor();
+        lambda.schedule(
+                () -> new PhotoProcessingHandler(s3).handleRequest(objectCreated("original/" + photoId), null),
+                1500, TimeUnit.MILLISECONDS);
+
+        long startedAt = System.nanoTime();
+        try {
+            // No Anthropic key is configured here, so identification itself
+            // cannot succeed — and that is fine, because what is under test is
+            // everything before it. The assertion is that the request did NOT
+            // come back "still being prepared": it waited for the Lambda
+            // rather than giving the resident an answer about a photo that was
+            // a second from ready.
+            mockMvc.perform(post("/api/photos/" + photoId + "/identify").param("language", "fr"))
+                    .andExpect(header().doesNotExist("Retry-After"));
+        } finally {
+            lambda.shutdownNow();
+        }
+
+        assertThat(Duration.ofNanos(System.nanoTime() - startedAt))
+                .as("the request waited for the Lambda instead of failing immediately")
+                .isGreaterThan(Duration.ofMillis(1400));
+
+        // And the processed copy really is there now, written by the Lambda
+        // rather than by anything the request did.
+        mockMvc.perform(get("/api/photos/" + photoId)).andExpect(status().isOk());
+    }
+
+    @Test
+    void anUploadedButUnprocessedPhotoIsNotReportedAsMissing() throws Exception {
+        // Nothing will ever process this one, so the wait runs out. "Not
+        // found" would be a lie about a photo the resident watched upload;
+        // 503 says try again, which is what the browser then does.
+        String photoId = uploadWithoutProcessing();
+
+        mockMvc.perform(post("/api/photos/" + photoId + "/identify").param("language", "fr"))
+                .andExpect(status().isServiceUnavailable())
+                // Retry-After is what separates this from the other 503 this
+                // endpoint can return — a missing API key, which retrying
+                // cannot fix. The browser keys its retry on the header.
+                .andExpect(header().string("Retry-After", "2"));
+    }
+
+    @Test
+    void aPhotoIdThatWasNeverUploadedIsStillNotFound() throws Exception {
+        mockMvc.perform(post("/api/photos/" + UUID.randomUUID() + "/identify").param("language", "fr"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -189,6 +273,28 @@ class PhotoPipelineIntegrationTest {
         assertThat(signedHeaders).contains("content-type");
         // And it expires, so a leaked ticket is not a standing upload grant.
         assertThat(url).contains("X-Amz-Expires=300");
+    }
+
+    /** Everything up to the Lambda: ticket, PUT, and nothing else. */
+    private String uploadWithoutProcessing() throws Exception {
+        byte[] photo = PhotoFixtures.jpegWithGps(800, 600);
+
+        JsonNode ticket = objectMapper.readTree(mockMvc.perform(post("/api/photos/upload-url")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "contentType", "image/jpeg",
+                                "contentLength", photo.length))))
+                .andReturn().getResponse().getContentAsString());
+
+        String photoId = ticket.get("photoId").asText();
+        HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder(URI.create(ticket.get("uploadUrl").asText()))
+                        .header("Content-Type", "image/jpeg")
+                        .PUT(HttpRequest.BodyPublishers.ofByteArray(photo))
+                        .build(),
+                HttpResponse.BodyHandlers.discarding());
+
+        return photoId;
     }
 
     private String uploadAndProcess(byte[] photo) throws Exception {

@@ -259,7 +259,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-133 tests: 70 unit, 63 integration.
+140 tests: 72 unit, 68 integration.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -269,14 +269,14 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `CollectionServiceTest` | 3 | sector schedule and bin colour resolution |
 | `CollectionCalendarTopUpTest` | 6 | rolling generation, the high-water mark, gaps, biweekly phase |
 | `SpecialNoticeServiceTest` | 3 | notice visibility |
-| `AuthenticationFlowIntegrationTest` | 7 | full context, real MySQL, real filter chain |
+| `AuthenticationFlowIntegrationTest` | 8 | full context, real MySQL, real filter chain |
 | `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
 | `AssistantIntegrationTest` | 11 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, real-Redis quota |
-| `AdminAgentIntegrationTest` | 7 | real writes, single-use plans, plan ownership, validation, RBAC |
+| `AdminAgentIntegrationTest` | 8 | real writes, single-use plans, plan ownership, validation, RBAC |
 | `NoticeEventPipelineIntegrationTest` | 5 | outbox commits with the write, relay, two consumer groups, replay safety |
-| `PhotoPipelineIntegrationTest` | 7 | real S3: presign, upload, Lambda, prefix isolation, path validation |
-| `PhotoProcessorTest` | 5 | EXIF GPS stripped, including when no resize is needed |
-| `PhotoSortingServiceTest` | 6 | the model names, the guide decides; refusal when the guide has no entry |
+| `PhotoPipelineIntegrationTest` | 10 | real S3: presign, upload, Lambda, prefix isolation, path validation, and the async gap between upload and answer |
+| `PhotoProcessorTest` | 6 | EXIF GPS stripped, including when no resize is needed; WebP decodes |
+| `PhotoSortingServiceTest` | 7 | the model names, the guide decides; refusal when the guide has no entry |
 | `SortingGuideIntegrationTest` | 6 | one source of truth: examples, ordering, seasonal wording, the merged duplicate |
 | `CollectionCalendarIntegrationTest` | 4 | the calendar a year out, repeat runs, and a cancellation that stays cancelled |
 | `ResidentQueryInsightsIntegrationTest` | 5 | question → Kafka → MongoDB → gap report, and no resident identified |

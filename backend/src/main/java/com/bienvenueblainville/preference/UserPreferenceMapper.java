@@ -5,7 +5,6 @@ import com.bienvenueblainville.common.Sector;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import java.time.LocalTime;
 import java.util.Optional;
 
 @Mapper
@@ -18,7 +17,6 @@ public interface UserPreferenceMapper {
             @Param("userId") Long userId,
             @Param("sector") Sector sector,
             @Param("languageCode") LanguageCode languageCode,
-            @Param("reminderEnabled") boolean reminderEnabled,
-            @Param("reminderTime") LocalTime reminderTime
+            @Param("reminderEnabled") boolean reminderEnabled
     );
 }

@@ -11,7 +11,6 @@ type BackendPreference = {
   sector: Sector;
   languageCode: Language;
   reminderEnabled: boolean;
-  reminderTime: string;
 };
 
 const { t } = useI18n();
@@ -43,8 +42,7 @@ async function persistToBackend() {
   await api.put<BackendPreference>("/preferences", {
     sector: preferences.sector,
     languageCode: preferences.language,
-    reminderEnabled: preferences.remindersEnabled,
-    reminderTime: "20:00:00"
+    reminderEnabled: preferences.remindersEnabled
   });
   synced.value = true;
 }
@@ -98,5 +96,13 @@ function onReminderChange(event: Event) {
       />
       {{ t("settings.reminders") }}
     </label>
+
+    <!--
+      The toggle used to say only "Reminders", beside a stored reminder_time
+      that nothing ever read. It has one real effect - whether city notices
+      reach this resident's inbox - so it now says that, and says what it does
+      not do.
+    -->
+    <p class="admin-note">{{ t("settings.remindersHelp") }}</p>
   </section>
 </template>

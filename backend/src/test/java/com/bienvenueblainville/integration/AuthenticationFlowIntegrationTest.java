@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -89,6 +90,37 @@ class AuthenticationFlowIntegrationTest {
         mockMvc.perform(get("/api/preferences").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sector").value("north"));
+    }
+
+    @Test
+    void thePreferenceApiCarriesOnlySettingsThatDoSomething() throws Exception {
+        String token = registerAndGetToken();
+
+        // reminder_time used to ride along here: stored, defaulted to 20:00,
+        // round-tripped on every save, and read by nothing. A settings API
+        // that accepts a reminder time is a promise to act on it, so V13
+        // dropped it rather than leaving the promise in the payload.
+        mockMvc.perform(get("/api/preferences").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reminderEnabled").value(true))
+                .andExpect(jsonPath("$.reminderTime").doesNotExist());
+
+        // And the toggle that does do something still round-trips: it decides
+        // who gets a row in the notice inbox.
+        mockMvc.perform(put("/api/preferences")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sector", "south",
+                                "languageCode", "zh",
+                                "reminderEnabled", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reminderEnabled").value(false))
+                .andExpect(jsonPath("$.sector").value("south"));
+
+        mockMvc.perform(get("/api/preferences").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.reminderEnabled").value(false))
+                .andExpect(jsonPath("$.languageCode").value("zh"));
     }
 
     @Test

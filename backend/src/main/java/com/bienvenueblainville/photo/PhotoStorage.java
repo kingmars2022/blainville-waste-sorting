@@ -59,9 +59,44 @@ public class PhotoStorage {
                 .toString();
     }
 
+    /** Short enough that a fast Lambda is not made to look slow. */
+    private static final Duration POLL_INTERVAL = Duration.ofMillis(300);
+
     /** The processed copy: EXIF stripped and resized, written by the Lambda. */
     public Optional<byte[]> readProcessed(String photoId) {
         return read(PhotoProperties.PROCESSED_PREFIX + photoId);
+    }
+
+    /**
+     * The processed copy, waiting for it if the Lambda has not finished.
+     *
+     * <p>The bug this exists for: the browser uploads to S3 and asks for an
+     * answer immediately, but the Lambda is triggered <em>asynchronously</em>
+     * by the object creation. Nothing in between waited, so the first read
+     * almost always found nothing and the resident was told their photo did
+     * not exist — for a photo that would be ready a second later. The
+     * integration test never saw it because it invokes the handler
+     * synchronously.
+     *
+     * <p>Polling rather than anything cleverer because S3 has nothing to
+     * subscribe to, and a bounded wait on a request thread is honest at this
+     * scale: one resident, one photo, a few seconds at most.
+     */
+    public Optional<byte[]> awaitProcessed(String photoId, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+
+        while (true) {
+            Optional<byte[]> processed = readProcessed(photoId);
+            if (processed.isPresent() || System.nanoTime() >= deadline) {
+                return processed;
+            }
+            try {
+                Thread.sleep(POLL_INTERVAL.toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+        }
     }
 
     public Optional<byte[]> readOriginal(String photoId) {

@@ -3,22 +3,21 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.bienvenueblainville.preference.UserPreferenceMapper">
     <select id="findByUserId" resultType="com.bienvenueblainville.preference.UserPreference">
-        select user_id, sector, language_code, reminder_enabled, reminder_time
+        select user_id, sector, language_code, reminder_enabled
         from user_preference
         where user_id = #{userId}
     </select>
 
     <insert id="insertDefault">
-        insert into user_preference (user_id, sector, language_code, reminder_enabled, reminder_time)
-        values (#{userId}, 'north', 'fr', true, '20:00:00')
+        insert into user_preference (user_id, sector, language_code, reminder_enabled)
+        values (#{userId}, 'north', 'fr', true)
     </insert>
 
     <update id="update">
         update user_preference
         set sector = #{sector},
             language_code = #{languageCode},
-            reminder_enabled = #{reminderEnabled},
-            reminder_time = #{reminderTime}
+            reminder_enabled = #{reminderEnabled}
         where user_id = #{userId}
     </update>
 </mapper>

@@ -39,6 +39,33 @@ class PhotoProcessorTest {
     }
 
     @Test
+    void decodesTheWebPTheUploadAllowListPromisesToAccept() throws Exception {
+        // PhotoController signs upload URLs for image/webp. A stock JVM has no
+        // WebP reader, so every one of those uploads used to reach the
+        // processor, fail to decode, and leave the photo permanently
+        // unavailable - the allow-list promised a format the pipeline could
+        // not handle. Asserting on a real WebP file is the only way to catch
+        // that: it fails the moment the decoder is dropped from the classpath.
+        byte[] webp;
+        try (var in = PhotoProcessorTest.class.getResourceAsStream("/photo/sample.webp")) {
+            webp = in.readAllBytes();
+        }
+
+        assertThat(ImageIO.read(new ByteArrayInputStream(webp)))
+                .as("the fixture really is a WebP this JVM can now read")
+                .isNotNull();
+
+        byte[] processed = PhotoProcessor.process(webp);
+
+        BufferedImage out = ImageIO.read(new ByteArrayInputStream(processed));
+        assertThat(out).isNotNull();
+        // Re-encoded as JPEG and resized to the long-edge limit, like any other
+        // accepted format.
+        assertThat(Math.max(out.getWidth(), out.getHeight())).isEqualTo(1024);
+        assertThat(gpsDirectories(processed)).isEmpty();
+    }
+
+    @Test
     void stripsMetadataEvenWhenThePhotoIsAlreadySmallEnoughToSkipResizing() throws Exception {
         // The obvious optimisation - "already under the limit, return as-is" -
         // would quietly reintroduce the leak for every phone screenshot and

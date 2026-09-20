@@ -1,0 +1,17 @@
+-- `reminder_time` promised something the application never did.
+--
+-- It was stored, defaulted to 20:00, round-tripped through GET/PUT
+-- /api/preferences, and read by nothing: no scheduler, no job, no delivery
+-- channel of any kind. The settings page did not even expose it - it sent the
+-- literal string "20:00:00" on every save - so a resident could not have set
+-- it if they wanted to.
+--
+-- A column that records an intention nobody acts on is worse than a missing
+-- feature: it reads, to anyone looking at the schema, like the reminder is
+-- implemented. Dropping it says plainly that it is not. The toggle beside it
+-- (`reminder_enabled`) does have a real effect - it decides who gets a row in
+-- the notice inbox - and stays, now labelled in the interface as what it
+-- actually controls.
+--
+-- Nothing is lost: every row held the default.
+alter table user_preference drop column reminder_time;

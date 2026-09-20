@@ -10,6 +10,7 @@ import com.bienvenueblainville.insights.QueryEventPublisher;
 import com.bienvenueblainville.photo.dto.PhotoAnswer;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -58,27 +59,40 @@ public class PhotoSortingService {
     private final SortingGuideRetriever retriever;
     private final AnswerComposer composer;
     private final QueryEventPublisher queries;
+    private final PhotoProperties properties;
 
     public PhotoSortingService(
             PhotoStorage storage,
             PhotoIdentifier identifier,
             SortingGuideRetriever retriever,
             AnswerComposer composer,
-            QueryEventPublisher queries
+            QueryEventPublisher queries,
+            PhotoProperties properties
     ) {
         this.storage = storage;
         this.identifier = identifier;
         this.retriever = retriever;
         this.composer = composer;
         this.queries = queries;
+        this.properties = properties;
     }
 
     public Optional<PhotoAnswer> identify(String photoId, LanguageCode language) {
         // The processed copy, never the original: the original still carries
         // the GPS coordinates of wherever the resident was standing, and there
         // is no reason to send those to a third party either.
-        Optional<byte[]> photo = storage.readProcessed(photoId);
+        Optional<byte[]> photo = storage.awaitProcessed(
+                photoId, Duration.ofSeconds(properties.processingTimeout()));
         if (photo.isEmpty()) {
+            // Two very different situations, which used to collapse into one
+            // 404 that said the photo did not exist. If the original is there,
+            // the upload worked and the Lambda simply has not caught up (or
+            // failed) — telling a resident "not found" for a photo they just
+            // watched upload is the kind of wrong answer that makes people
+            // retake the picture pointlessly.
+            if (storage.readOriginal(photoId).isPresent()) {
+                throw new PhotoNotReadyException();
+            }
             return Optional.empty();
         }
 

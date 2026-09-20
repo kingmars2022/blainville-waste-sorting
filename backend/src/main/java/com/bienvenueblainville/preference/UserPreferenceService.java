@@ -20,7 +20,7 @@ public class UserPreferenceService {
     }
 
     public UserPreference update(Long userId, UserPreferenceRequest request) {
-        mapper.update(userId, request.sector(), request.languageCode(), request.reminderEnabled(), request.reminderTime());
+        mapper.update(userId, request.sector(), request.languageCode(), request.reminderEnabled());
         return mapper.findByUserId(userId).orElseThrow();
     }
 }

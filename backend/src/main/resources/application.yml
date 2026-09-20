@@ -104,6 +104,10 @@ app:
     endpoint: ${S3_ENDPOINT:}
     upload-ttl: ${PHOTO_UPLOAD_TTL:300}
     max-upload-bytes: ${PHOTO_MAX_BYTES:10000000}
+    # The Lambda is triggered asynchronously by the upload, so an answer asked
+    # for straight afterwards has to wait for it. Bounded: past this the
+    # resident is told to try again rather than held indefinitely.
+    processing-timeout: ${PHOTO_PROCESSING_TIMEOUT:10}
   collection:
     calendar:
       # The recurring collections are stored as patterns, not as rows with an

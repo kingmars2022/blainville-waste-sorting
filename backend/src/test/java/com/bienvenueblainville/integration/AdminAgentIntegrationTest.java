@@ -18,9 +18,17 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -123,6 +131,53 @@ class AdminAgentIntegrationTest {
         // state the first run already changed.
         assertThatThrownBy(() -> planStore.consume(planId, 1L))
                 .hasMessageContaining("expired or was already run");
+    }
+
+    @Test
+    void twoApprovalsArrivingAtOnceRunThePlanOnce() throws Exception {
+        // The bug this guards: consume() used to GET then DELETE. Two approvals
+        // landing together both read the plan before either delete happened,
+        // and every write in it ran twice. A comment said "single-use"; nothing
+        // enforced it. Repeated, because a race that only sometimes loses is
+        // still a race.
+        for (int attempt = 0; attempt < 25; attempt++) {
+            String planId = storePlan(1L, new PlannedStep(AgentToolName.delete_collection,
+                    Map.of("id", 999999), "Delete collection event 999999"));
+
+            ExecutorService pool = Executors.newFixedThreadPool(2);
+            CountDownLatch bothReady = new CountDownLatch(2);
+            AtomicInteger succeeded = new AtomicInteger();
+
+            try {
+                List<Future<?>> races = List.of(
+                        pool.submit(() -> race(bothReady, planId, succeeded)),
+                        pool.submit(() -> race(bothReady, planId, succeeded)));
+                for (Future<?> race : races) {
+                    race.get(10, TimeUnit.SECONDS);
+                }
+            } finally {
+                pool.shutdownNow();
+            }
+
+            assertThat(succeeded.get())
+                    .as("exactly one of two concurrent approvals may be handed the plan (attempt %d)", attempt)
+                    .isEqualTo(1);
+        }
+    }
+
+    private void race(CountDownLatch bothReady, String planId, AtomicInteger succeeded) {
+        try {
+            // Both threads sit here until the other arrives, so they reach
+            // Redis as close together as two threads can.
+            bothReady.countDown();
+            bothReady.await(5, TimeUnit.SECONDS);
+            planStore.consume(planId, 1L);
+            succeeded.incrementAndGet();
+        } catch (ResponseStatusException expectedForTheLoser) {
+            // One of the two must lose; that is the assertion above.
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Test

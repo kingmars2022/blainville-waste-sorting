@@ -14,11 +14,13 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -53,7 +55,8 @@ class PhotoSortingServiceTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         when(composer.providerName()).thenReturn("template");
-        service = new PhotoSortingService(storage, identifier, retriever, composer, queries);
+        service = new PhotoSortingService(storage, identifier, retriever, composer, queries,
+                new PhotoProperties("bucket", "ca-central-1", "", 300, 10_000_000, 0));
     }
 
     @Test
@@ -61,7 +64,7 @@ class PhotoSortingServiceTest {
         // The design in one assertion: the vision output becomes a *search
         // query*. Nothing the model returns can set the bin, because the
         // answer is composed from what retrieval found.
-        when(storage.readProcessed(PHOTO_ID)).thenReturn(Optional.of(new byte[]{1, 2, 3}));
+        when(storage.awaitProcessed(eq(PHOTO_ID), any())).thenReturn(Optional.of(new byte[]{1, 2, 3}));
         when(identifier.identify(any(), any())).thenReturn(Optional.of(new MaterialIdentification(
                 "boîte à pizza", List.of("carton souillé", "boite a pizza"), false)));
         when(retriever.retrieve(any(), any())).thenReturn(List.of(item("Papiers et cartons souilles")));
@@ -88,7 +91,7 @@ class PhotoSortingServiceTest {
         // Recognising an object is not the same as knowing its rule. A vision
         // model that has seen a million photos of paint tins still does not
         // know what Blainville does with them.
-        when(storage.readProcessed(PHOTO_ID)).thenReturn(Optional.of(new byte[]{1}));
+        when(storage.awaitProcessed(eq(PHOTO_ID), any())).thenReturn(Optional.of(new byte[]{1}));
         when(identifier.identify(any(), any())).thenReturn(Optional.of(new MaterialIdentification(
                 "aquarium", List.of(), false)));
         when(retriever.retrieve(any(), any())).thenReturn(List.of());
@@ -112,7 +115,7 @@ class PhotoSortingServiceTest {
 
     @Test
     void saysItCannotSeeRatherThanGuessingWhenIdentificationFails() {
-        when(storage.readProcessed(PHOTO_ID)).thenReturn(Optional.of(new byte[]{1}));
+        when(storage.awaitProcessed(eq(PHOTO_ID), any())).thenReturn(Optional.of(new byte[]{1}));
         when(identifier.identify(any(), any())).thenReturn(Optional.empty());
 
         PhotoAnswer answer = service.identify(PHOTO_ID, LanguageCode.zh).orElseThrow();
@@ -127,20 +130,39 @@ class PhotoSortingServiceTest {
     void readsTheStrippedCopyAndNeverTheOriginal() {
         // The original still carries the resident's GPS coordinates. There is
         // no reason to send those to a third party either.
-        when(storage.readProcessed(PHOTO_ID)).thenReturn(Optional.of(new byte[]{1}));
+        when(storage.awaitProcessed(eq(PHOTO_ID), any())).thenReturn(Optional.of(new byte[]{1}));
         when(identifier.identify(any(), any())).thenReturn(Optional.empty());
 
         service.identify(PHOTO_ID, LanguageCode.fr);
 
-        verify(storage).readProcessed(PHOTO_ID);
+        verify(storage).awaitProcessed(eq(PHOTO_ID), any());
         verify(storage, never()).readOriginal(any());
     }
 
     @Test
-    void reportsNothingForAPhotoThatHasNotBeenProcessedYet() {
-        when(storage.readProcessed(PHOTO_ID)).thenReturn(Optional.empty());
+    void reportsNothingForAPhotoIdThatWasNeverUploaded() {
+        when(storage.awaitProcessed(eq(PHOTO_ID), any())).thenReturn(Optional.empty());
+        when(storage.readOriginal(PHOTO_ID)).thenReturn(Optional.empty());
 
         assertThat(service.identify(PHOTO_ID, LanguageCode.fr)).isEmpty();
+        verify(identifier, never()).identify(any(), any());
+    }
+
+    @Test
+    void saysAnUploadedPhotoIsStillBeingPreparedRatherThanThatItDoesNotExist() {
+        // The Lambda runs asynchronously, so a photo can be uploaded and not
+        // yet processed. Both cases used to produce the same 404 telling the
+        // resident their photo did not exist - for a photo they had just
+        // watched upload. They are different answers and deserve different
+        // ones.
+        when(storage.awaitProcessed(eq(PHOTO_ID), any())).thenReturn(Optional.empty());
+        when(storage.readOriginal(PHOTO_ID)).thenReturn(Optional.of(new byte[]{1}));
+
+        assertThatThrownBy(() -> service.identify(PHOTO_ID, LanguageCode.fr))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("503")
+                .hasMessageContaining("still being prepared");
+
         verify(identifier, never()).identify(any(), any());
     }
 

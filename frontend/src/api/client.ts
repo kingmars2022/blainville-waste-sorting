@@ -2,10 +2,13 @@ import { useAuthStore } from "../stores/auth";
 
 export class ApiError extends Error {
   status: number;
+  /** Seconds the server asked us to wait, when it said to retry at all. */
+  retryAfter: number | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, retryAfter: number | null = null) {
     super(message);
     this.status = status;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -31,7 +34,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       auth.logout();
     }
     const message = body?.message ?? `Request failed with status ${response.status}`;
-    throw new ApiError(response.status, message);
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    throw new ApiError(response.status, message, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null);
   }
 
   return body as T;

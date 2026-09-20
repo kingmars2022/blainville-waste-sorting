@@ -25,7 +25,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiError> handleResponseStatus(ResponseStatusException ex) {
+        // Carry the exception's own headers through. Without this, anything a
+        // ResponseStatusException says in a header is silently dropped here -
+        // which is how a Retry-After that told the browser a photo was still
+        // being prepared never reached it.
         return ResponseEntity.status(ex.getStatusCode())
+                .headers(ex.getResponseHeaders())
                 .body(ApiError.of(ex.getStatusCode().value(), ex.getReason()));
     }
 

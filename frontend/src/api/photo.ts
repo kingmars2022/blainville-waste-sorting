@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, ApiError } from "./client";
 import type { AssistantSource } from "./assistant";
 import type { Language } from "../i18n/messages";
 
@@ -45,10 +45,35 @@ async function uploadToStorage(ticket: UploadTicket, file: File) {
   }
 }
 
-function identify(photoId: string, language: Language) {
-  return api.post<PhotoAnswer>(
-    `/photos/${photoId}/identify?language=${language}`
-  );
+const PROCESSING_RETRIES = 3;
+const FALLBACK_RETRY_SECONDS = 2;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Asks for the answer, retrying while the photo is still being prepared.
+ *
+ * The upload lands in storage and a Lambda processes it asynchronously, so
+ * there is a gap between "uploaded" and "ready" that nobody can remove — only
+ * wait out. The server waits too, but it holds a request thread to do it, so
+ * it gives up first and says so.
+ *
+ * Keyed on Retry-After rather than on the status, because this endpoint has a
+ * second 503 that means "no API key is configured" — retrying that one just
+ * hammers a misconfiguration.
+ */
+async function identify(photoId: string, language: Language) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await api.post<PhotoAnswer>(`/photos/${photoId}/identify?language=${language}`);
+    } catch (error) {
+      const askedToRetry = error instanceof ApiError && error.retryAfter !== null;
+      if (!askedToRetry || attempt >= PROCESSING_RETRIES) {
+        throw error;
+      }
+      await wait(((error as ApiError).retryAfter ?? FALLBACK_RETRY_SECONDS) * 1000);
+    }
+  }
 }
 
 /**

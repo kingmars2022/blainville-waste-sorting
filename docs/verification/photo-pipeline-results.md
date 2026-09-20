@@ -240,3 +240,91 @@ PHOTO_BUCKET=your-bucket AWS_REGION=ca-central-1 mvn spring-boot:run
 No AWS credentials are configured in this repository. The application reads
 the default provider chain — environment, container role, instance profile —
 so a deployment supplies them and a clone has none to leak.
+
+## What a code review found afterwards, and what running it proved
+
+Three defects in this pipeline survived the verification above, all of them in
+the part that only a real deployment exercises. They are recorded here because
+each one is a different lesson about what "verified" was worth.
+
+### The deployment jar could never have started
+
+`infra/template.yaml` pointed `CodeUri` at `backend-0.0.1-SNAPSHOT.jar` — the
+Spring Boot fat jar. Boot puts application classes under `BOOT-INF/classes`
+and dependencies under `BOOT-INF/lib`, a layout only Boot's own launcher
+understands. The AWS Lambda Java runtime looks for the handler on a plain
+classpath, so the very first cold start would have been a
+`ClassNotFoundException`.
+
+`backend/pom.xml` now shades a second, attached artifact
+(`backend-<version>-lambda.jar`) carrying only what the handler touches. And
+the check that mattered was not reading the config — it was running it:
+
+```text
+$ java -cp target/backend-0.0.1-SNAPSHOT-lambda.jar:. Check sample.webp
+handler loaded: com.bienvenueblainville.photo.lambda.PhotoProcessingHandler
+implements RequestHandler: true
+handler instantiated (S3 client built): ok
+webp 123490 bytes -> jpeg 76887 bytes
+jpeg magic: ffd8
+```
+
+The first attempt at that command failed:
+
+```text
+Caused by: java.lang.NoClassDefFoundError: org/apache/http/protocol/HttpContext
+    at software.amazon.awssdk.http.apache.ApacheSdkHttpService.createHttpClientBuilder
+```
+
+The include list carried `software.amazon.awssdk:*` but not the Apache HTTP
+client's own transitive dependencies, so `S3Client.create()` would have thrown
+— at cold start on AWS, not at build time here. A jar that builds is not a jar
+that runs, and only loading it from a bare classpath tells the two apart.
+
+Result: 11 MB, against the Boot jar's 115 MB and Lambda's 50 MB limit.
+
+### WebP was accepted and could not be decoded
+
+`PhotoController` signs upload URLs for `image/jpeg`, `image/png` and
+`image/webp`. A stock JVM has no WebP reader:
+
+```text
+$ java -e 'ImageIO.getReaderFormatNames()'   # no "webp" anywhere
+```
+
+So every WebP a resident sent was signed for, uploaded, and then failed in the
+processor with "Unsupported or corrupt image" — leaving that photo permanently
+unavailable. The failure was at least safe (no corrupt output was written),
+but the allow-list promised a format the pipeline could not honour.
+
+A pure-Java WebP reader now ships with the Lambda jar, and
+`PhotoProcessorTest` decodes a real `.webp` fixture rather than trusting the
+classpath.
+
+### Upload and answer raced, and the tests hid it
+
+The browser uploads to S3 and asks for an answer immediately. S3 triggers the
+Lambda **asynchronously**. Nothing in between waited, so the first read of the
+processed copy found nothing and the resident was told the photo did not
+exist — for a photo that would be ready a second later.
+
+Every test in this file invoked the handler *synchronously* before asking,
+which is exactly why none of them saw it.
+
+`identify` now waits for the Lambda's output on a bounded budget
+(`PHOTO_PROCESSING_TIMEOUT`, 10s), and separates two answers that used to
+collapse into one 404:
+
+| situation | before | now |
+|---|---|---|
+| photo id never uploaded | 404 | 404 |
+| uploaded, Lambda not finished | 404 "does not exist" | 503 + `Retry-After: 2` |
+
+The header is not decoration: this endpoint has a second 503 meaning "no
+Anthropic key is configured", which retrying cannot fix. The browser keys its
+retry on `Retry-After`, so it waits out the first and reports the second.
+
+Fixing that surfaced one more: `GlobalExceptionHandler` rebuilt the response
+body from `ResponseStatusException` and dropped its headers, so the
+`Retry-After` never reached the browser. The test asserting the header is what
+caught it.

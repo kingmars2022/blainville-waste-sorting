@@ -9,6 +9,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                      S3 implementation for tests
  * @param uploadTtl     how long a presigned upload URL stays valid, in seconds
  * @param maxUploadBytes largest photo a resident may upload
+ * @param processingTimeout how long to wait for the Lambda's output before
+ *                      telling the resident it is not ready, in seconds
  */
 @ConfigurationProperties(prefix = "app.photo")
 public record PhotoProperties(
@@ -16,7 +18,8 @@ public record PhotoProperties(
         String region,
         String endpoint,
         long uploadTtl,
-        long maxUploadBytes
+        long maxUploadBytes,
+        long processingTimeout
 ) {
     public static final String ORIGINAL_PREFIX = "original/";
     public static final String PROCESSED_PREFIX = "processed/";

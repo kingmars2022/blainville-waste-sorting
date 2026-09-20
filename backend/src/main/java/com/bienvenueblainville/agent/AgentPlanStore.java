@@ -35,7 +35,8 @@ public class AgentPlanStore {
 
     public String save(AgentPlan plan) {
         try {
-            redis.opsForValue().set(PREFIX + plan.id(), objectMapper.writeValueAsString(plan), TTL);
+            redis.opsForValue().set(key(plan.id(), plan.adminUserId()),
+                    objectMapper.writeValueAsString(plan), TTL);
             return plan.id();
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Could not store the plan", e);
@@ -43,30 +44,40 @@ public class AgentPlanStore {
     }
 
     /**
+     * Takes the plan and removes it, in one operation that cannot interleave.
+     *
+     * <p>This used to be a {@code GET} followed by a {@code DELETE}, which made
+     * "single-use" a comment rather than a guarantee: two approvals arriving at
+     * once both read the plan before either deleted it, and both executed it.
+     * Every write in the plan happened twice. {@code GETDEL} closes that
+     * window — exactly one caller can be handed the value.
+     *
+     * <p>Deleted before execution, not after: a retry following a partial
+     * failure must be a fresh plan built against the state that failure left
+     * behind, not a replay of stale steps.
+     *
      * @param adminUserId the administrator asking to execute. A plan is bound to
-     *                    whoever it was shown to: approval means "I read this
-     *                    and I accept it", which no one else can do on their
-     *                    behalf. A mismatch reads as not-found rather than
-     *                    forbidden, so plan ids are not probeable.
+     *                    whoever it was shown to — approval means "I read this
+     *                    and I accept it", which no one can do on another's
+     *                    behalf — and that binding is the key itself rather than
+     *                    a check after the read. Another administrator computes
+     *                    a different key, so they find nothing, delete nothing,
+     *                    and cannot probe for plan ids.
      */
     public AgentPlan consume(String planId, Long adminUserId) {
-        String key = PREFIX + planId;
-        String json = redis.opsForValue().get(key);
+        String json = redis.opsForValue().getAndDelete(key(planId, adminUserId));
 
-        AgentPlan plan = Optional.ofNullable(json).map(this::read).orElseThrow(() ->
+        return Optional.ofNullable(json).map(this::read).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "That plan has expired or was already run. Ask again to get a fresh one."));
+    }
 
-        if (!plan.adminUserId().equals(adminUserId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "That plan has expired or was already run. Ask again to get a fresh one.");
-        }
-
-        // Deleted before execution, not after: a plan is single-use, and a
-        // retry after a partial failure must be a fresh plan built against the
-        // state the failure left behind, not a replay of stale steps.
-        redis.delete(key);
-        return plan;
+    /**
+     * Owner first, then plan id. Binding the two into the key is what lets the
+     * ownership check and the single-use guarantee be the same atomic step.
+     */
+    private static String key(String planId, Long adminUserId) {
+        return PREFIX + adminUserId + ":" + planId;
     }
 
     private AgentPlan read(String json) {
