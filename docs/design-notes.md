@@ -826,6 +826,7 @@ Backend settings are read from environment variables:
 
 ```yaml
 DB_URL
+CORS_ALLOWED_ORIGINS # default: http://localhost:5173; comma separated, exact origins
 DB_USERNAME
 DB_PASSWORD
 APP_JWT_SECRET
@@ -966,7 +967,7 @@ Completed:
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- 159 tests: 72 that need nothing but the JVM, 68 that run against real infrastructure, and 19 in the browser runtime.
+- 163 tests: 72 that need nothing but the JVM, 72 that run against real infrastructure, and 19 in the browser runtime.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -1078,7 +1079,6 @@ Current limitations:
 - The sorting data is an initial structured seed, not a complete official import. It is served from the `sorting_item` tables to residents, the assistant, the photo lookup and the admin console alike - the static frontend copy was removed in `V10`/`V11`.
 - The collection patterns in `collection_schedule_rule` are an illustrative weekly/biweekly schedule, not the official municipal calendar. The calendar no longer expires, but what it generates is still a plausible pattern rather than imported truth, and real holiday shifts are not in it.
 - The admin schedule table lists every collection with no paging or date filter. That was fine when the calendar was a short hand-written seed; now that it extends itself to a rolling 180-day horizon the table is around sixty rows and will stay that length. It is usable, but it is the next thing that panel needs.
-- CORS allows a single hard-coded origin (`http://localhost:5173`). Deploying anywhere means making that configurable first.
 - Three things are implemented but have never run against the real service: live Anthropic API calls, the Lambda on AWS, and the API Gateway deployment. Everything about them was verified against local equivalents (a real S3 API, a real Kafka broker, a real MongoDB wire protocol), and that difference is recorded in `verification/photo-pipeline-results.md` rather than glossed over. The deployment jar itself is now loaded and run from a bare classpath, which is the part of "never run on AWS" that could be checked here - it caught a missing HTTP client dependency that would have failed at cold start.
 - Push notifications are not implemented.
 - The frontend is not yet containerized for production deployment, and nothing is deployed anywhere.
@@ -1088,7 +1088,6 @@ Current limitations:
 
 Short-term:
 
-- Make the allowed CORS origin configurable, as the first step towards deploying anything.
 
 Medium-term:
 
@@ -1120,7 +1119,7 @@ Long-term:
 - A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
 - A recurring calendar that extends itself without ever undoing an administrator's cancellation.
 - Photo uploads that never pass through the application, with EXIF stripped before anything is served.
-- 159 tests, of which 68 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
+- 163 tests, of which 72 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 

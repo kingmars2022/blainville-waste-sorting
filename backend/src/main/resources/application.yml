@@ -63,6 +63,12 @@ mybatis:
     map-underscore-to-camel-case: true
 
 app:
+  cors:
+    # Origins the browser may call this API from, comma separated. The default
+    # is the Vite dev server, so a fresh clone needs nothing; a deployment sets
+    # this to the domain the site is served from, or the API will refuse the
+    # browser it exists for.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   jwt:
     issuer: bienvenue-a-blainville
     secret: ${APP_JWT_SECRET:change-this-development-secret-change-before-production}

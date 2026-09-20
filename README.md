@@ -259,7 +259,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-159 tests: 72 backend unit, 68 backend integration, 19 frontend.
+163 tests: 72 backend unit, 72 backend integration, 19 frontend.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -279,6 +279,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `PhotoSortingServiceTest` | 7 | the model names, the guide decides; refusal when the guide has no entry |
 | `SortingGuideIntegrationTest` | 6 | one source of truth: examples, ordering, seasonal wording, the merged duplicate |
 | `CollectionCalendarIntegrationTest` | 4 | the calendar a year out, repeat runs, and a cancellation that stays cancelled |
+| `CorsIntegrationTest` | 4 | the origin list is enforced, trimmed, and exposes the one header the browser reads |
 | `ResidentQueryInsightsIntegrationTest` | 5 | question → Kafka → MongoDB → gap report, and no resident identified |
 | `QueryEventPublisherTest` | 4 | the events gate, and both failure modes kept apart |
 | `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
