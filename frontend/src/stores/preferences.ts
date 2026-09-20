@@ -23,7 +23,16 @@ function loadPreferences(): PreferenceState {
     return fallback;
   }
 
-  return { ...fallback, ...JSON.parse(raw) };
+  try {
+    return { ...fallback, ...JSON.parse(raw) };
+  } catch {
+    // Anything can end up in localStorage: a half-written value, a key reused
+    // by something else, an extension. This runs while the first view is being
+    // created, so an unguarded parse took the whole application down at
+    // startup - for a stored language setting. The auth store already guarded
+    // against it; this one did not.
+    return fallback;
+  }
 }
 
 export const usePreferenceStore = defineStore("preferences", {

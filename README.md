@@ -259,7 +259,7 @@ switch — has its own screenshot alongside the feature it demonstrates in
 
 ## Tests
 
-140 tests: 72 unit, 68 integration.
+159 tests: 72 backend unit, 68 backend integration, 19 frontend.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -291,6 +291,15 @@ switch — has its own screenshot alongside the feature it demonstrates in
 | `AssistantRateLimiterTest` | 5 | quota boundary, missing counter, and the failure policy in each mode |
 | `ClaudeAnswerComposerTest` | 1 | template provider attribution after API failure |
 | `LocalS3Test` | 1 | the test S3 server starts without dragging in the app's database |
+
+Frontend, with Vitest in happy-dom — no browser, no backend, runs in about a second:
+
+| Suite | Tests | What it covers |
+|---|---|---|
+| `client.spec.ts` | 6 | bearer token, 401 logs out, Retry-After parsing, 204 |
+| `photo.spec.ts` | 5 | retries while preparing, never retries a missing API key, gives up |
+| `AdminView.spec.ts` | 4 | POST vs PUT, and every field an edit did not touch surviving it |
+| `preferences.spec.ts` | 4 | defaults, persistence, and unreadable storage not taking the app down |
 
 Unit tests need nothing but the JVM:
 

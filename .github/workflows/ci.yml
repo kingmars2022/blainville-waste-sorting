@@ -1,7 +1,7 @@
 name: Validate application
 
 # Three things have to hold before a change lands:
-#   1. the Vue frontend type-checks and builds,
+#   1. the Vue frontend type-checks, builds, and passes its own tests,
 #   2. the unit tests pass without any infrastructure,
 #   3. the integration tests pass against a REAL MySQL and a REAL Redis - the
 #      whole point of that suite is to catch what Mockito-based unit tests
@@ -36,10 +36,19 @@ jobs:
         run: npm ci
 
       # `npm run build` is `vue-tsc -b && vite build`, so this is both the
-      # type check and the production build in one step.
+      # type check and the production build in one step. It covers the spec
+      # files too, which is why a badly typed test fails here rather than
+      # rotting quietly.
       - name: Type-check and build
         working-directory: frontend
         run: npm run build
+
+      # Vitest, in happy-dom: the API client's failure handling, the photo
+      # upload retry, the preference store's startup read, and the admin edit
+      # form. No browser and no backend, so it runs in seconds.
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
 
   unit-tests:
     name: Backend unit tests
