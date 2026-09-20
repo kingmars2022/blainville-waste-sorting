@@ -117,6 +117,3 @@ app:
       enabled: ${COLLECTION_CALENDAR_TOP_UP:true}
       horizon-days: ${COLLECTION_CALENDAR_HORIZON_DAYS:180}
       interval-ms: ${COLLECTION_CALENDAR_INTERVAL_MS:86400000}
-    put-out-after: "20:00"
-    put-out-before: "06:00"
-    bring-back-before: "20:00"

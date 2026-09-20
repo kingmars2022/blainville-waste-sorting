@@ -24,6 +24,10 @@ export const messages = {
     "home.today": "Aujourd'hui",
     "home.tomorrow": "Demain",
     "home.noCollection": "Aucune collecte prevue dans les prochains jours",
+    // The curbside hours live in this wording, in each language, and nowhere
+    // else. application.yml used to carry put-out-after/put-out-before as
+    // well, which nothing ever read - two sources for one fact, one of them
+    // dead. If the city changes the hours, these three strings are the change.
     "home.putOut": "Sortez le bac apres 20 h ce soir et avant 6 h demain matin.",
     "home.bringBack": "Rentrez le bac vide avant 20 h ce soir.",
     "home.upcoming": "Prochaines collectes",
