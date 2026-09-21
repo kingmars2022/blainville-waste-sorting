@@ -53,21 +53,34 @@ Checked September 2026. Verify before relying on any of it.
 | MySQL | [Aiven for MySQL](https://aiven.io/free-mysql-database) | 1 GB RAM, 1 GB storage, one free service per type, no time limit | **No** |
 | Redis | [Upstash](https://upstash.com/pricing/redis) | 256 MB, 500k commands/month, 10 GB bandwidth | **No** |
 | Redis (optional) | [Upstash](https://upstash.com/pricing/redis) | 256 MB, 500k commands/month | **No** |
-| The whole app | [Koyeb](https://www.koyeb.com/) | One service, 512 MB RAM, 0.1 vCPU, does not sleep | Usually no — may ask if it cannot verify you are human |
-| The whole app (alternative) | [Render](https://render.com/) | Free web service, **sleeps when idle** (cold start on first hit) | No |
+| The whole app | [Render](https://render.com/) | Free web service, 512 MB, Docker; **sleeps after 15 minutes idle**, 30–60 s to wake | **No** |
+| The whole app (alternative) | [Hugging Face Spaces](https://huggingface.co/docs/hub/en/spaces-overview) | Docker, 2 vCPU / 16 GB, sleeps after **48 hours** idle; port fixed at 7860 | **No** |
 
-**Fly.io is no longer an option.** Its free Hobby allowance was withdrawn;
-new accounts get a trial of 2 VM-hours or 7 days and require a card. It is
-still in a lot of older tutorials.
+**Two platforms that tutorials still recommend are no longer options.**
+Fly.io withdrew its free Hobby allowance; new accounts get a trial of 2
+VM-hours or 7 days and require a card. And Koyeb — which an earlier version of
+this document recommended first — was acquired by Mistral in February 2026 and
+**removed its free Starter plan**, so a new account's console has nothing to
+create. Neither is a criticism of either platform; free tiers move, and a
+checklist written once is wrong within a year.
 
-Two consequences worth deciding up front:
+Two consequences worth deciding up front, and they are the same consequence:
 
-- **Aiven powers off a free service that sits idle**, with a warning email
-  first. For a portfolio link that gets opened once a week, expect to wake it
-  up before an interview.
-- **Render's free tier sleeps.** First request after idle takes tens of
-  seconds — on a JVM, long enough that an interviewer assumes it is broken.
-  Koyeb not sleeping is why it is listed first, despite the smaller box.
+- **Aiven powers off a free MySQL that sits idle**, with a warning email
+  first.
+- **Render sleeps a free service after 15 minutes**, and waking it takes
+  30–60 seconds before the JVM has even started.
+
+So a link nobody has opened for a week is slow the first time, in two places
+at once. For a portfolio that means one habit: **open it yourself a couple of
+minutes before an interview.** Hugging Face Spaces is the alternative
+precisely because 48 hours of grace makes that habit unnecessary; the cost is
+a `*.hf.space` URL, which reads as a machine-learning demo rather than a
+municipal service.
+
+Keeping a free service permanently awake with a scheduled pinger is possible
+and is what a lot of people do. It is also exactly what the idle policy exists
+to prevent, so it is not recommended here.
 
 ## MySQL, not Postgres
 
@@ -126,14 +139,17 @@ tight; raise them with `SPRING_DATA_REDIS_TIMEOUT` and
 
 ### 3. The application
 
+On Render: **New → Web Service → connect this repository →** Language
+**Docker**, Dockerfile path **`./Dockerfile`**, instance type **Free**.
+
 Point the platform at this repository with the **`Dockerfile` at the root**
 (not `backend/Dockerfile` — the root one builds the frontend too and puts it
 inside the jar). Build context is the repository root. No build command to
 configure.
 
-**Port.** The application reads `PORT` and defaults to 8080, so a platform
-that injects it works with nothing set, and one that asks for a port takes
-8080.
+**Port.** The application reads `PORT` and defaults to 8080. Render injects
+`PORT` and it is picked up with nothing configured. Hugging Face Spaces fixes
+the port at 7860 instead, so set `PORT=7860` as a Space variable.
 
 **Memory.** The image already sets `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`,
 because a 512 MB box is small and the JVM's default sizing assumes it is not.
@@ -205,8 +221,9 @@ Everything above is $0 with no card, with these exceptions:
 - **Claude-worded answers** need an Anthropic API key, which is paid per
   request. The default `template` provider costs nothing and works on a fresh
   clone.
-- Koyeb may ask for a card for human verification, which is not the same as
-  being charged — but decide whether you mind before starting.
+- Free tiers are the thing in this document most likely to be wrong by the
+  time you read it. Koyeb's disappeared between the first draft and the second.
+  Check the current terms before relying on any row of that table.
 
 ## What the single image looks like
 
