@@ -8,7 +8,7 @@ the sorting guide and public notices.
 ```mermaid
 flowchart LR
     V["Vue 3 console<br/>FR / EN / ZH"] -->|"Bearer JWT"| F["JwtAuthenticationFilter"]
-    F --> A["Spring Boot<br/>7 controllers"]
+    F --> A["Spring Boot<br/>14 controllers"]
     A -->|"cache-aside + rate limit"| R[("Redis")]
     A -->|"retrieval only"| AI["Sorting assistant<br/>RAG, FR/EN/ZH"]
     A -->|"reads run, writes wait"| AG["Admin agent<br/>plan, then approve"]
@@ -16,16 +16,17 @@ flowchart LR
     S3 -.->|"ObjectCreated"| L["Lambda<br/>strip EXIF, resize"]
     L --> S3P[("S3<br/>processed/")]
     S3P -->|"API Gateway"| B
-    S3P -->|"names the object"| V["Vision"]
-    V -->|"search term"| AI
+    S3P -->|"names the object"| VI["Vision"]
+    VI -->|"search term"| AI
     A -->|"same transaction"| OB[("outbox_event")]
     OB -.->|"relay, at-least-once"| K["Kafka<br/>2 consumer groups"]
     K --> AU[("Audit trail<br/>MySQL JSON or MongoDB")]
     K --> IN[("Resident inbox")]
     AI -->|"fire and forget"| K2["Kafka<br/>query stream"]
     K2 --> MG[("MongoDB<br/>gap report")]
-    A -->|"MyBatis mappers"| D[("MySQL<br/>7 tables")]
-    FW["Flyway V1-V11"] -.->|"migrates on startup"| D
+    A -->|"MyBatis mappers"| D[("MySQL<br/>12 tables")]
+    RU["collection_schedule_rule"] -.->|"materialized daily"| D
+    FW["Flyway V1-V13"] -.->|"migrates on startup"| D
     A -->|"ADMIN only"| ADM["Admin endpoints<br/>/api/admin/**"]
 ```
 
@@ -33,15 +34,16 @@ flowchart LR
 |---|---|
 | Frontend | Vue 3, TypeScript, Pinia, Vite |
 | API | Spring Boot, Java 21 |
-| Persistence | MyBatis, MySQL (12 tables), Flyway (11 migrations) |
+| Persistence | MyBatis, MySQL (12 tables), Flyway (13 migrations) |
 | Events | Transactional outbox → Kafka, two consumer groups |
 | Photos | S3 presigned upload, Lambda (EXIF strip + resize), API Gateway, vision lookup |
 | Audit trail | MongoDB or MySQL JSON, same interface and same tests |
 | Caching | Redis (Spring Cache, cache-aside, optional at runtime) |
 | Assistant | Retrieval-augmented Q&A over MySQL full-text; Claude optional |
 | Admin agent | Claude tool-use with a human approval step; plans held in Redis |
-| Auth | Spring Security, JWT (HMAC), BCrypt |
-| Delivery | Docker Compose, GitHub Actions |
+| Schedule | Recurring rules materialized to a rolling 180-day horizon |
+| Auth | Spring Security, JWT (HMAC), BCrypt, configurable CORS origins |
+| Delivery | Docker Compose, GitHub Actions, a shaded Lambda artifact |
 
 ## The parts worth reading
 
@@ -338,7 +340,7 @@ cd backend && mvn test -Pintegration-test
 ```bash
 cp .env.example .env          # set DB_URL, DB_USERNAME, DB_PASSWORD,
                               # APP_JWT_SECRET, APP_ADMIN_EMAIL, APP_ADMIN_PASSWORD
-docker compose up -d --build  # MySQL + Redis + Kafka + MongoDB + backend; Flyway V1-V11
+docker compose up -d --build  # MySQL + Redis + Kafka + MongoDB + backend; Flyway V1-V13
 cd frontend && npm ci && npm run dev
 ```
 
