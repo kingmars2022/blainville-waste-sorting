@@ -10,6 +10,9 @@ import java.util.List;
 public interface SortingItemTranslationMapper {
     List<SortingItemTranslation> findByItemId(@Param("itemId") Long itemId);
 
+    /** One query for many items; see SortingItemService.all. */
+    List<SortingItemTranslation> findByItemIds(@Param("itemIds") List<Long> itemIds);
+
     /** All of them, for the public guide. */
     List<SortingItemTranslation> findAll();
 

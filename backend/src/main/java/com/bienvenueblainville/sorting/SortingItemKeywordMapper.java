@@ -10,6 +10,9 @@ import java.util.List;
 public interface SortingItemKeywordMapper {
     List<SortingItemKeyword> findByItemId(@Param("itemId") Long itemId);
 
+    /** One query for many items; see SortingItemService.all. */
+    List<SortingItemKeyword> findByItemIds(@Param("itemIds") List<Long> itemIds);
+
     /** All of them, for the public guide. */
     List<SortingItemKeyword> findAll();
 

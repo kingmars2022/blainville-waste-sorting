@@ -8,6 +8,7 @@ import com.bienvenueblainville.sorting.dto.TranslationInput;
 import com.bienvenueblainville.sorting.dto.TranslationView;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Collections;
@@ -38,10 +39,53 @@ public class SortingItemService {
         this.answerCache = answerCache;
     }
 
+    /**
+     * The whole guide, for the admin console.
+     *
+     * <p>Four queries, not one per item. It used to map each row through
+     * {@link #toResponse(SortingItem)}, which costs three lookups of its own:
+     * fourteen entries meant forty-three queries every time an administrator
+     * opened the page, and the count grew with the guide.
+     *
+     * <p>{@link #guide()} serves residents and was already batched. This one
+     * was not, which is the usual shape of the bug - the path someone
+     * measured is fast and the one beside it never got the same treatment.
+     */
     public List<SortingItemResponse> all() {
-        return itemMapper.findAll().stream().map(this::toResponse).toList();
+        List<SortingItem> items = itemMapper.findAll();
+        if (items.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> ids = items.stream().map(SortingItem::id).toList();
+        Map<Long, List<SortingItemTranslation>> translations =
+                byItem(translationMapper.findByItemIds(ids), SortingItemTranslation::itemId);
+        Map<Long, List<SortingItemKeyword>> keywords =
+                byItem(keywordMapper.findByItemIds(ids), SortingItemKeyword::itemId);
+        Map<Long, List<SortingItemExample>> examples =
+                byItem(exampleMapper.findByItemIds(ids), SortingItemExample::itemId);
+
+        return items.stream()
+                .map(item -> toResponse(
+                        item,
+                        translations.getOrDefault(item.id(), List.of()),
+                        keywords.getOrDefault(item.id(), List.of()),
+                        examples.getOrDefault(item.id(), List.of())))
+                .toList();
     }
 
+    private static <T> Map<Long, List<T>> byItem(List<T> rows, java.util.function.Function<T, Long> itemId) {
+        return rows.stream().collect(Collectors.groupingBy(itemId));
+    }
+
+    /**
+     * One item is up to ten inserts: the row, then a translation, a keyword
+     * list and an example list for each of three languages. Without a
+     * transaction a failure part-way leaves an entry the API contract says
+     * cannot exist - one with some of its languages missing - and no error
+     * that says which.
+     */
+    @Transactional
     public SortingItemResponse create(SortingItemRequest request) {
         // A new entry changes the answer to questions that previously had
         // none, so every cached refusal is now potentially wrong.
@@ -59,6 +103,7 @@ public class SortingItemService {
         return toResponse(requireItem(itemId));
     }
 
+    @Transactional
     public SortingItemResponse update(Long id, SortingItemRequest request) {
         // An edit changes which entry wins for an unknown set of questions.
 
@@ -76,6 +121,8 @@ public class SortingItemService {
         return toResponse(requireItem(id));
     }
 
+    /** Four deletes; a partial one orphans the children it did not reach. */
+    @Transactional
     public void delete(Long id) {
         // A deletion can turn a cached answer into one citing a row that no
         // longer exists.

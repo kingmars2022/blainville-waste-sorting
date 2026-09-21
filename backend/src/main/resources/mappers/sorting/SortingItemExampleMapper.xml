@@ -13,6 +13,14 @@
         order by language_code, position
     </select>
 
+    <select id="findByItemIds" resultType="com.bienvenueblainville.sorting.SortingItemExample">
+        select <include refid="columns"/>
+        from sorting_item_example
+        where item_id in
+        <foreach collection="itemIds" item="itemId" open="(" separator="," close=")">#{itemId}</foreach>
+        order by item_id, language_code, position
+    </select>
+
     <select id="findAll" resultType="com.bienvenueblainville.sorting.SortingItemExample">
         select <include refid="columns"/>
         from sorting_item_example

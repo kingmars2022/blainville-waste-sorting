@@ -989,7 +989,7 @@ Completed:
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- 175 tests: 72 that need nothing but the JVM, 79 that run against real infrastructure, and 24 in the browser runtime.
+- 180 tests: 75 that need nothing but the JVM, 81 that run against real infrastructure, and 24 in the browser runtime.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -1140,7 +1140,7 @@ Long-term:
 - A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
 - A recurring calendar that extends itself without ever undoing an administrator's cancellation.
 - Photo uploads that never pass through the application, with EXIF stripped before anything is served.
-- 175 tests, of which 79 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
+- 180 tests, of which 81 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 

@@ -267,13 +267,14 @@ TLS, and where the frontend finds the API.
 
 ## Tests
 
-175 tests: 72 backend unit, 79 backend integration, 24 frontend.
+180 tests: 75 backend unit, 81 backend integration, 24 frontend.
 
 | Suite | Tests | What it covers |
 |---|---|---|
 | `AuthServiceTest` | 3 | registration, login, password hashing |
 | `JwtServiceTest` | 3 | token issue, parse, rejection |
-| `SortingItemServiceTest` | 5 | multilingual search and keyword matching |
+| `SortingItemServiceTest` | 5 |
+| `SortingItemListingTest` | 3 | the guide listing costs four queries, not four per entry | multilingual search and keyword matching |
 | `CollectionServiceTest` | 3 | sector schedule and bin colour resolution |
 | `CollectionCalendarTopUpTest` | 6 | rolling generation, the high-water mark, gaps, biweekly phase |
 | `SpecialNoticeServiceTest` | 3 | notice visibility |
@@ -289,6 +290,7 @@ TLS, and where the frontend finds the API.
 | `CollectionCalendarIntegrationTest` | 4 | the calendar a year out, repeat runs, and a cancellation that stays cancelled |
 | `CorsIntegrationTest` | 4 | the origin list is enforced, trimmed, and exposes the one header the browser reads |
 | `CollectionPagingIntegrationTest` | 5 | pages partition the schedule, the total is the total, the size is capped |
+| `SortingItemTransactionIntegrationTest` | 2 | a half-written sorting entry rolls back; a whole one commits |
 | `ResidentQueryInsightsIntegrationTest` | 5 | question → Kafka → MongoDB → gap report, and no resident identified |
 | `QueryEventPublisherTest` | 4 | the events gate, and both failure modes kept apart |
 | `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
