@@ -257,6 +257,14 @@ Every feature — settings, login/registration, and the French/English/Chinese
 switch — has its own screenshot alongside the feature it demonstrates in
 [`docs/design-notes.md`](docs/design-notes.md#features).
 
+## Deploying it
+
+A checklist for putting this on free-tier infrastructure - what is genuinely
+required (less than the architecture suggests), which services still have a
+real free tier in 2026, and the three settings that bite: the port, Redis over
+TLS, and where the frontend finds the API.
+[`docs/deployment.md`](docs/deployment.md)
+
 ## Tests
 
 163 tests: 72 backend unit, 72 backend integration, 19 frontend.
