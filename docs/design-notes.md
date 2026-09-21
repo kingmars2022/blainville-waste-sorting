@@ -1102,7 +1102,7 @@ Current limitations:
 - The collection patterns in `collection_schedule_rule` are an illustrative weekly/biweekly schedule, not the official municipal calendar. The calendar no longer expires, but what it generates is still a plausible pattern rather than imported truth, and real holiday shifts are not in it.
 - Three things are implemented but have never run against the real service: live Anthropic API calls, the Lambda on AWS, and the API Gateway deployment. Everything about them was verified against local equivalents (a real S3 API, a real Kafka broker, a real MongoDB wire protocol), and that difference is recorded in `verification/photo-pipeline-results.md` rather than glossed over. The deployment jar itself is now loaded and run from a bare classpath, which is the part of "never run on AWS" that could be checked here - it caught a missing HTTP client dependency that would have failed at cold start.
 - Push notifications are not implemented.
-- The frontend is not yet containerized for production deployment, and nothing is deployed anywhere.
+- The deployment is a free-tier one, with the trade-offs that implies: the container sleeps after 15 minutes of inactivity, so the first request after a quiet spell pays a cold start, and Redis, Kafka, MongoDB and the photo pipeline are all switched off there (`CACHE_TYPE=none`, `EVENTS_ENABLED=false`, `AUDIT_STORE=mysql`, `ASSISTANT_PROVIDER=template`). What is deployed exercises the MySQL path, the sorting guide, the schedule, the notices, the admin console and the retrieval assistant's template provider - not the event pipeline, which remains verified locally against real brokers.
 - All municipal rules should be verified against official Blainville sources before public use.
 
 ## Roadmap

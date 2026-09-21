@@ -5,6 +5,10 @@ when collection happens, how to sort a given material, and where to drop off
 what the curb will not take. Behind it, an admin back office for the schedule,
 the sorting guide and public notices.
 
+**Live: <https://blainville-waste-sorting.onrender.com/>** — one Docker image serving both the API
+and the pages, on a free tier that sleeps when idle, so the first request after a quiet spell takes
+about a minute to wake the container and the database.
+
 ```mermaid
 flowchart LR
     V["Vue 3 console<br/>FR / EN / ZH"] -->|"Bearer JWT"| F["JwtAuthenticationFilter"]

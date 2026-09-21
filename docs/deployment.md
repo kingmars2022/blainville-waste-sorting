@@ -3,12 +3,17 @@
 A checklist for putting the application somewhere a stranger can open it,
 without a credit card and without a bill.
 
-**Nothing here has been run.** The code changes it depends on have been made
-and tested — the allowed CORS origins are configurable, the Lambda jar loads
-from a bare classpath, the calendar extends itself — but the deployment
-itself has not been performed. Where a step is a verified fact about this
-codebase it says so; where it is a fact about a third party, check it,
-because free tiers change and this was written in September 2026.
+**This has been run.** The Render + Aiven path below was followed end to end
+in September 2026 and the result is live at
+<https://blainville-waste-sorting.onrender.com/>: the pages load, the API
+answers, and Flyway migrated the seed into a real hosted MySQL on first boot.
+The optional services are the part that has *not* been deployed — Redis,
+Kafka, MongoDB and the S3 photo pipeline are switched off there, and they
+stay verified against local real equivalents rather than hosted ones.
+
+Where a step is a verified fact about this codebase it says so; where it is a
+fact about a third party, check it, because free tiers change fast. Koyeb's
+free plan disappeared while this document was being written.
 
 ## First: you need far less than the architecture diagram suggests
 
