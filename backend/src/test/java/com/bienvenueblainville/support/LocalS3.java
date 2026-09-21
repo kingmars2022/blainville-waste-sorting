@@ -28,8 +28,6 @@ public final class LocalS3 {
             // A mutable map: S3MockApplication.start removes entries as it
             // reads them, so Map.of throws UnsupportedOperationException.
             Map<String, Object> properties = new HashMap<>();
-            properties.put(S3MockApplication.PROP_HTTP_PORT, String.valueOf(S3MockApplication.RANDOM_PORT));
-            properties.put(S3MockApplication.PROP_HTTPS_PORT, String.valueOf(S3MockApplication.RANDOM_PORT));
             properties.put(S3MockApplication.PROP_INITIAL_BUCKETS, BUCKET);
             properties.put(S3MockApplication.PROP_SILENT, "true");
             // S3Mock is itself a Spring Boot application, and Spring Boot reads
@@ -48,7 +46,16 @@ public final class LocalS3 {
                     "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
                     "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration"));
 
-            application = S3MockApplication.start(properties);
+            // The ports go in as command-line arguments, not in the map.
+            // start() puts the map into Spring's *default* properties, which
+            // application.yml overrides - and this project's application.yml
+            // sets server.port, so the S3 server quietly tried to bind the
+            // application's own port instead of a free one. Command-line
+            // arguments outrank application.yml, so they hold.
+            application = S3MockApplication.start(
+                    properties,
+                    "--" + S3MockApplication.PROP_HTTP_PORT + "=" + S3MockApplication.RANDOM_PORT,
+                    "--" + S3MockApplication.PROP_HTTPS_PORT + "=" + S3MockApplication.RANDOM_PORT);
             endpoint = "http://localhost:" + application.getHttpPort();
             Runtime.getRuntime().addShutdownHook(new Thread(application::stop));
         }

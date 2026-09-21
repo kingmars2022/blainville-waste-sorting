@@ -37,6 +37,13 @@ public class SecurityConfig {
             CorsConfigurationSource corsConfigurationSource
     ) throws Exception {
         return http
+                // This chain governs the API and nothing else. Every endpoint
+                // in the application is under /api, and since the built
+                // frontend is now served from this same application, the
+                // alternative is a filter chain that answers 401 to
+                // index.html - which is how a single-deployment setup fails:
+                // the whole site, not one endpoint.
+                .securityMatcher("/api/**")
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -45,7 +52,6 @@ public class SecurityConfig {
                         .accessDeniedHandler(new AccessDeniedHandlerImpl())
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/collections/**").permitAll()
                         .requestMatchers("/api/notices/active").permitAll()

@@ -1,3 +1,9 @@
+# Platforms differ on how they tell an application which port to use: some let
+# you configure it, some inject PORT and expect the process to read it. Reading
+# it with a default costs nothing and works on both.
+server:
+  port: ${PORT:8080}
+
 spring:
   application:
     name: bienvenue-a-blainville

@@ -27,3 +27,7 @@ venv/
 .npm-cache/
 *.log
 *.tsbuildinfo
+
+# The built frontend, copied into the backend by the Docker build so one image
+# serves both. Generated, never edited, and 150 KB of minified noise in a diff.
+backend/src/main/resources/static/

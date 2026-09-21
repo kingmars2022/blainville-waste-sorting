@@ -24,10 +24,25 @@ runtime. For a working public demo:
 | S3 + Lambda | No | The photo feature returns errors. Everything else is unaffected. |
 | Anthropic key | No | `ASSISTANT_PROVIDER=template` (the default) answers from the guide with no model and no cost. |
 
-So the minimum is **a MySQL, a Redis, somewhere to run one container, and
-somewhere to serve static files.** The photo feature is the one thing that
-genuinely cannot be free — it needs a real AWS account with a card on file —
-so leave it off and say so on the page.
+So the minimum is **a MySQL and somewhere to run one container.** Two
+accounts, not four.
+
+Redis is in the "strongly recommended" row rather than the required one, and
+in this configuration it earns even less than that: the cache falls through to
+a database that is already fast enough at this size, the assistant's quota
+limiter serves anyway because the template provider costs nothing per request,
+and the admin agent — the one thing that genuinely needs Redis — is already
+unavailable without an Anthropic key. Verified by killing Redis outright and
+exercising the app: fourteen guide entries, six upcoming collections, grounded
+answers in French and Chinese, and the refusal still refusing.
+
+And there is nowhere separate to serve static files, because the backend
+serves them: `Dockerfile` at the repository root builds the frontend and puts
+it inside the jar. One deployment, one domain, and CORS stops mattering
+because the browser is same-origin.
+
+The photo feature is the one thing that genuinely cannot be free — it needs a
+real AWS account with a card on file — so leave it off and say so on the page.
 
 ## The services, and what they cost
 
@@ -37,9 +52,9 @@ Checked September 2026. Verify before relying on any of it.
 |---|---|---|---|
 | MySQL | [Aiven for MySQL](https://aiven.io/free-mysql-database) | 1 GB RAM, 1 GB storage, one free service per type, no time limit | **No** |
 | Redis | [Upstash](https://upstash.com/pricing/redis) | 256 MB, 500k commands/month, 10 GB bandwidth | **No** |
-| Backend container | [Koyeb](https://www.koyeb.com/) | One service, 512 MB RAM, 0.1 vCPU, does not sleep | Usually no — may ask if it cannot verify you are human |
-| Backend (alternative) | [Render](https://render.com/) | Free web service, **sleeps when idle** (cold start on first hit) | No |
-| Frontend (static) | Cloudflare Pages / Netlify / GitHub Pages | Generous static hosting | No |
+| Redis (optional) | [Upstash](https://upstash.com/pricing/redis) | 256 MB, 500k commands/month | **No** |
+| The whole app | [Koyeb](https://www.koyeb.com/) | One service, 512 MB RAM, 0.1 vCPU, does not sleep | Usually no — may ask if it cannot verify you are human |
+| The whole app (alternative) | [Render](https://render.com/) | Free web service, **sleeps when idle** (cold start on first hit) | No |
 
 **Fly.io is no longer an option.** Its free Hobby allowance was withdrawn;
 new accounts get a trial of 2 VM-hours or 7 days and require a card. It is
@@ -86,80 +101,57 @@ Connector/J parameter for that.
 Nothing else to do: **Flyway creates every table and seeds the data on first
 boot** (13 migrations, verified to apply cleanly to an empty database).
 
-### 2. Redis
+### 2. Redis — skip it
 
-Create the free Redis. Upstash speaks the real Redis protocol, and this app
-needs two things from it: `EVAL` (the rate limiter's atomic counter) and
-`GETDEL` (single-use agent plans, Redis 6.2+). Confirm both are available on
-whatever you pick.
+Set `CACHE_TYPE=none` and move on. The reasoning is under "you need far less
+than the architecture diagram suggests" above; it was verified by stopping
+Redis rather than by reading the code.
 
-Upstash requires TLS and a password. **No code change is needed** — Spring
-Boot reads any `spring.*` property from the environment, which was verified
-by setting it and watching the behaviour change:
+If you do want it later, Upstash requires TLS and a password, and **no code
+change is needed** — Spring Boot reads any `spring.*` property from the
+environment:
 
 ```
 REDIS_HOST=<host>
 REDIS_PORT=<port>
 SPRING_DATA_REDIS_PASSWORD=<password>
 SPRING_DATA_REDIS_SSL_ENABLED=true
+CACHE_TYPE=redis
 ```
 
-One caution: the Redis timeouts are set to **500 ms** deliberately, so a dead
-Redis costs milliseconds rather than seconds. Across the public internet to a
-different provider, that is tight. If you see cache misses and warnings about
-Redis under load, raise it:
+The Redis timeouts are 500 ms on purpose, so a dead Redis costs milliseconds
+rather than seconds. Across the public internet to another provider that is
+tight; raise them with `SPRING_DATA_REDIS_TIMEOUT` and
+`SPRING_DATA_REDIS_CONNECT_TIMEOUT` if you see warnings.
+
+### 3. The application
+
+Point the platform at this repository with the **`Dockerfile` at the root**
+(not `backend/Dockerfile` — the root one builds the frontend too and puts it
+inside the jar). Build context is the repository root. No build command to
+configure.
+
+**Port.** The application reads `PORT` and defaults to 8080, so a platform
+that injects it works with nothing set, and one that asks for a port takes
+8080.
+
+**Memory.** The image already sets `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`,
+because a 512 MB box is small and the JVM's default sizing assumes it is not.
+
+**Health check.** There is no actuator here. Use `GET /api/sorting-items` — it
+is public, returns 200, and touches MySQL, so it is a real readiness check
+rather than a liveness fiction.
+
+Environment variables:
 
 ```
-SPRING_DATA_REDIS_TIMEOUT=2000ms
-SPRING_DATA_REDIS_CONNECT_TIMEOUT=2000ms
-```
-
-Getting Redis settings wrong shows up loudly at startup rather than quietly —
-observed while testing the TLS flag.
-
-### 3. Backend container
-
-Point the platform at this repository with `backend/Dockerfile`. It is a
-two-stage build: Maven builds the jar, then a JRE image runs it. No build
-command to configure.
-
-**Port.** The app listens on 8080 and does not read `PORT`. Platforms differ:
-
-- **Koyeb / anything with a configurable port** — set the service port to
-  8080 and change nothing.
-- **Render and anything that injects `PORT`** — set the environment variable
-  `SERVER_PORT` to whatever they inject, or add one line to
-  `backend/src/main/resources/application.yml`:
-
-  ```yaml
-  server:
-    port: ${PORT:8080}
-  ```
-
-**Memory.** A 512 MB box is tight for a Spring Boot JVM. Set:
-
-```
-JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75
-```
-
-**Health check.** There is no actuator in this project. Use
-`GET /api/sorting-items` — it is public, returns 200, and touches MySQL, so
-it is a real readiness check rather than a liveness fiction.
-
-Environment variables for the service:
-
-```
-DB_URL=jdbc:mysql://...            # from step 1
+DB_URL=jdbc:mysql://HOST:PORT/DATABASE?useUnicode=true&characterEncoding=utf8&serverTimezone=America/Toronto&sslMode=REQUIRED
 DB_USERNAME=...
 DB_PASSWORD=...
-REDIS_HOST=...                     # from step 2
-REDIS_PORT=...
-SPRING_DATA_REDIS_PASSWORD=...
-SPRING_DATA_REDIS_SSL_ENABLED=true
-CORS_ALLOWED_ORIGINS=https://your-frontend-domain
 APP_JWT_SECRET=<a long random string, not the default>
 APP_ADMIN_EMAIL=<your admin email>
 APP_ADMIN_PASSWORD=<a real password, not the default>
+CACHE_TYPE=none                    # no Redis
 EVENTS_ENABLED=false               # no Kafka
 AUDIT_STORE=mysql                  # no MongoDB
 ASSISTANT_PROVIDER=template        # no API key, no cost
@@ -169,35 +161,25 @@ ASSISTANT_PROVIDER=template        # no API key, no cost
 `application.yml`. Deploying without overriding both means shipping a public
 admin account with a published password.
 
-### 4. Frontend
+`CORS_ALLOWED_ORIGINS` is not in that list on purpose. One deployment means
+the browser is same-origin, so nothing is a cross-origin request. It is still
+there for a split deployment; it just has nothing to do in this one.
 
-```bash
-cd frontend && npm ci && npm run build      # produces dist/
-```
+### 4. There is no step 4
 
-Publish `dist/` to Cloudflare Pages, Netlify or GitHub Pages.
-
-The dev server proxies `/api` to `localhost:8080`; in production nothing does
-that, so the built site must reach the backend by its real URL. The API
-client calls relative paths (`/api/...`), so either:
-
-- **Put both behind one domain** — a reverse proxy or the host's rewrite
-  rules mapping `/api/*` to the backend. Simplest, and it keeps the browser
-  same-origin, so CORS barely matters.
-- **Or serve them from different domains** — then `CORS_ALLOWED_ORIGINS` must
-  name the frontend's exact origin, and the API client needs a base URL
-  rather than a relative path. That is a small code change this repository
-  has not made.
-
-The first option is less work and fewer moving parts.
+The frontend is inside the image. If you would rather host it separately —
+a CDN in front of static files is genuinely faster — build it with
+`npm run build`, publish `frontend/dist`, and then you do need
+`CORS_ALLOWED_ORIGINS` set to that domain, and the API client needs a base URL
+instead of the relative paths it uses today. That last part is a code change
+this repository has not made.
 
 ### 5. Check it
 
 ```bash
-curl https://your-backend/api/sorting-items            # 200, a JSON array
-curl -i -X OPTIONS https://your-backend/api/sorting-items \
-     -H "Origin: https://your-frontend-domain" \
-     -H "Access-Control-Request-Method: GET"           # 200 + Access-Control-Allow-Origin
+curl -s https://your-app/api/sorting-items | head -c 80   # a JSON array
+curl -s -o /dev/null -w "%{http_code}\n" https://your-app/        # 200, the page itself
+curl -s -o /dev/null -w "%{http_code}\n" https://your-app/tri     # 200, history-mode deep link
 ```
 
 Then open the site, switch the language, and sign in with the admin account.
@@ -225,3 +207,38 @@ Everything above is $0 with no card, with these exceptions:
   clone.
 - Koyeb may ask for a card for human verification, which is not the same as
   being charged — but decide whether you mind before starting.
+
+## What the single image looks like
+
+Verified locally before writing any of the above: the frontend built into the
+jar, served by Spring Boot, driven with a real browser against one origin —
+no Vite proxy, nothing forwarding `/api`.
+
+```text
+/                    200  text/html   the page itself
+/tri /admin
+/connexion
+/parametres          200  text/html   history-mode deep links
+/assets/*.js .css    200              static assets
+/api/sorting-items   200  application/json
+/api/admin/notices   401              still protected
+/api/nope            401              never HTML
+```
+
+<img src="verification/screenshots/21-single-origin.png" width="700" alt="The sorting page rendered from a single origin: seasonal reminders and fourteen guide entries with their examples, loaded from the API on the same port that served the page" />
+
+*Nineteen cards rendered, no failed requests, no page errors — from
+`http://localhost:8080` alone.*
+
+Two things had to change for that to work, and both are the kind that are
+obvious afterwards:
+
+- **Spring Security answered 401 to the whole site.** `anyRequest().authenticated()`
+  does not distinguish `index.html` from an admin endpoint. The filter chain is
+  now scoped with `securityMatcher("/api/**")` — safe because every controller
+  in the application is under `/api`, which the commit checked rather than
+  assumed.
+- **The S3 mock in the tests started binding the application's port.** Adding
+  `server.port` to `application.yml` outranked the ports `LocalS3` was passing,
+  because `S3MockApplication.start` puts them in Spring's *default* properties.
+  They go in as command-line arguments now, which outrank `application.yml`.
