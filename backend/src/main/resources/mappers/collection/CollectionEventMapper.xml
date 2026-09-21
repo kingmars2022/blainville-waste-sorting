@@ -33,6 +33,19 @@
         limit #{limit} offset #{offset}
     </select>
 
+    <!--
+        Ascending, unlike the admin listing: a caller asking "what is coming
+        up" wants the nearest first, and the limit should cut the far end off
+        rather than the near one.
+    -->
+    <select id="findFrom" resultType="com.bienvenueblainville.collection.CollectionEvent">
+        select <include refid="columns"/>
+        from collection_event
+        where collection_date &gt;= #{startDate}
+        order by collection_date asc, collection_type asc, id asc
+        limit #{limit}
+    </select>
+
     <select id="countAll" resultType="long">
         select count(*) from collection_event
     </select>

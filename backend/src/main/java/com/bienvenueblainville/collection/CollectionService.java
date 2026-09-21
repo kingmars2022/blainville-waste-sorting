@@ -55,6 +55,24 @@ public class CollectionService {
     }
 
     /**
+     * What the admin agent plans against: the schedule from today forward.
+     *
+     * <p>It used to be {@code all()}, which meant every collection there had
+     * ever been went into a model prompt - tokens paid for on every planning
+     * call, growing for ever, since the calendar extends itself and nothing
+     * prunes what is behind. Bounding it forward is not a compromise: a
+     * collection that already happened cannot usefully be moved or cancelled,
+     * so the past was never the part the model needed.
+     *
+     * <p>The row cap is a backstop rather than the real bound - the forward
+     * window is naturally around fifty rows - in case an administrator bulk
+     * loads a real municipal calendar.
+     */
+    public List<CollectionEvent> forPlanning(int limit) {
+        return mapper.findFrom(today(), limit);
+    }
+
+    /**
      * One page of the schedule, newest first.
      *
      * <p>The admin console used to list every row. That was fine when the

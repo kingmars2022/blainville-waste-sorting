@@ -14,6 +14,8 @@ public interface SpecialNoticeMapper {
 
     List<SpecialNotice> findAll();
 
+    List<SpecialNotice> findRecent(@Param("limit") int limit);
+
     Optional<SpecialNotice> findById(@Param("id") Long id);
 
     void insert(Map<String, Object> params);

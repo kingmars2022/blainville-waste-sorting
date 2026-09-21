@@ -50,19 +50,33 @@ public class AgentToolCatalog {
         this.validator = validator;
     }
 
+    /**
+     * How many rows a read tool may put in front of the model.
+     *
+     * <p>Both listings used to be unbounded. Every row went into the prompt,
+     * was paid for on every planning call, and - for the schedule - grew for
+     * ever, because the calendar extends itself and nothing prunes the past.
+     * The tool descriptions say what the bound is, so the model does not read
+     * a short list as "there is nothing else".
+     */
+    private static final int PLANNING_LIMIT = 200;
+
     // ---------------------------------------------------------------- schemas
 
     public List<ToolUnion> tools() {
         return List.of(
                 tool(AgentToolName.list_collections,
-                        "List the collection schedule currently in the database. Call this before "
-                                + "proposing any change to the schedule, so that you are working from "
-                                + "real rows and real ids rather than assuming.",
+                        "List the upcoming collection schedule: every sector, from today forward, "
+                                + "at most " + PLANNING_LIMIT + " rows. Collections that have already "
+                                + "happened are NOT listed, because they cannot usefully be changed. "
+                                + "Call this before proposing any change to the schedule, so that you "
+                                + "are working from real rows and real ids rather than assuming.",
                         properties(), List.of()),
 
                 tool(AgentToolName.list_notices,
-                        "List every public notice, including inactive and expired ones. Call this "
-                                + "before changing or deleting a notice.",
+                        "List public notices, including inactive and expired ones, newest first, at "
+                                + "most " + PLANNING_LIMIT + " of them. Call this before changing or "
+                                + "deleting a notice.",
                         properties(), List.of()),
 
                 tool(AgentToolName.create_collection,
@@ -117,8 +131,8 @@ public class AgentToolCatalog {
     /** Runs a read tool immediately; the model needs real data to plan against. */
     public String executeRead(AgentToolName tool) throws JsonProcessingException {
         return switch (tool) {
-            case list_collections -> objectMapper.writeValueAsString(collections.all());
-            case list_notices -> objectMapper.writeValueAsString(notices.all());
+            case list_collections -> objectMapper.writeValueAsString(collections.forPlanning(PLANNING_LIMIT));
+            case list_notices -> objectMapper.writeValueAsString(notices.recent(PLANNING_LIMIT));
             default -> throw new IllegalArgumentException(tool + " is not a read tool");
         };
     }

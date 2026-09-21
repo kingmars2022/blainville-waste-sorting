@@ -21,6 +21,19 @@
         order by starts_on desc
     </select>
 
+    <!--
+        Same ordering, bounded. The agent needs expired and inactive notices
+        too - it is asked to change and delete them - so this cannot be a date
+        window like the schedule's; newest-first with a cap is the honest
+        bound.
+    -->
+    <select id="findRecent" resultType="com.bienvenueblainville.notice.SpecialNotice">
+        select <include refid="columns"/>
+        from special_notice
+        order by starts_on desc, id desc
+        limit #{limit}
+    </select>
+
     <select id="findById" resultType="com.bienvenueblainville.notice.SpecialNotice">
         select <include refid="columns"/>
         from special_notice

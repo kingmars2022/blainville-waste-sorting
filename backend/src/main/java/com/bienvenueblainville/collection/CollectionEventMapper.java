@@ -23,6 +23,12 @@ public interface CollectionEventMapper {
 
     long countAll();
 
+    /** All sectors, from a date forward, bounded. See CollectionService.forPlanning. */
+    List<CollectionEvent> findFrom(
+            @Param("startDate") LocalDate startDate,
+            @Param("limit") int limit
+    );
+
     Optional<CollectionEvent> findById(@Param("id") Long id);
 
     void insert(Map<String, Object> params);

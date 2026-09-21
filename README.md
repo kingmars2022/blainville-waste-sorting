@@ -267,7 +267,7 @@ TLS, and where the frontend finds the API.
 
 ## Tests
 
-173 tests: 72 backend unit, 77 backend integration, 24 frontend.
+175 tests: 72 backend unit, 79 backend integration, 24 frontend.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -280,7 +280,7 @@ TLS, and where the frontend finds the API.
 | `AuthenticationFlowIntegrationTest` | 8 | full context, real MySQL, real filter chain |
 | `RedisCacheIntegrationTest` | 5 | real Redis: cache hits, key scoping, JSON round-trip, eviction |
 | `AssistantIntegrationTest` | 11 | real MySQL full-text: grounded answers in FR/EN/ZH, refusals, real-Redis quota |
-| `AdminAgentIntegrationTest` | 8 | real writes, single-use plans, plan ownership, validation, RBAC |
+| `AdminAgentIntegrationTest` | 10 | real writes, single-use plans, plan ownership, validation, RBAC |
 | `NoticeEventPipelineIntegrationTest` | 5 | outbox commits with the write, relay, two consumer groups, replay safety |
 | `PhotoPipelineIntegrationTest` | 10 | real S3: presign, upload, Lambda, prefix isolation, path validation, and the async gap between upload and answer |
 | `PhotoProcessorTest` | 6 | EXIF GPS stripped, including when no resize is needed; WebP decodes |

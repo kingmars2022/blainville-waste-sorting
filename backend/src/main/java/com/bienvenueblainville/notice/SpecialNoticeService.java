@@ -49,6 +49,11 @@ public class SpecialNoticeService {
         return mapper.findAll();
     }
 
+    /** The most recent notices, bounded - see CollectionService.forPlanning. */
+    public List<SpecialNotice> recent(int limit) {
+        return mapper.findRecent(limit);
+    }
+
     // A notice publish is the one write residents notice immediately (a
     // cancelled collection, a storm delay), so it evicts rather than waiting
     // out the TTL.

@@ -483,6 +483,28 @@ It is worth being precise about what that guarantees, because the obvious readin
 
 The same reasoning decides the default: the `template` composer answers from the retrieved entry with no model involved. It is not a stub. Retrieval has already done the hard part, and reading the entry back in the resident's language is genuinely useful - so a fresh clone with no API key gets a working feature, CI gets something deterministic to assert on, and the Claude-backed composer has a baseline to be measured against rather than merely assumed better than.
 
+### Why the agent's read tools are bounded
+
+Both of them used to return everything. `list_collections` in particular put
+every collection there had ever been into a model prompt - paid for on every
+planning call, and growing for ever, because the calendar extends itself and
+nothing prunes what is behind.
+
+The schedule is now the window from today forward. That is not a compromise
+for the sake of a token count: a collection that has already happened cannot
+usefully be moved or cancelled, so the past was never the part the model
+needed. It also changes the shape of the problem - the forward window stays
+around fifty rows however long the application runs, while "everything" does
+not.
+
+The notice listing could not take the same treatment, because the agent is
+asked to change and delete expired notices and therefore has to see them. It
+gets a row cap instead.
+
+Both tool descriptions state their bound, so the model reads a short list as
+"this is what there is, within these limits" rather than "there is nothing
+else".
+
 ### Why the admin agent's loop is hand-written
 
 The Anthropic SDK ships a tool runner that drives the whole request → execute → loop cycle for you, and using it here would have been about half the code. It is the wrong shape for this problem. A tool runner executes every tool the model calls; what this needs is "look at the real schedule, but do not touch it".
@@ -967,7 +989,7 @@ Completed:
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- 173 tests: 72 that need nothing but the JVM, 77 that run against real infrastructure, and 24 in the browser runtime.
+- 175 tests: 72 that need nothing but the JVM, 79 that run against real infrastructure, and 24 in the browser runtime.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -1118,7 +1140,7 @@ Long-term:
 - A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
 - A recurring calendar that extends itself without ever undoing an administrator's cancellation.
 - Photo uploads that never pass through the application, with EXIF stripped before anything is served.
-- 173 tests, of which 77 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
+- 175 tests, of which 79 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 
