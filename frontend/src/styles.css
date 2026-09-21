@@ -374,6 +374,24 @@ textarea {
   width: auto;
 }
 
+.admin-pager {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.admin-pager span {
+  color: #4b675c;
+  font-size: 14px;
+}
+
+.admin-pager button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .admin-row-actions {
   display: flex;
   gap: 8px;

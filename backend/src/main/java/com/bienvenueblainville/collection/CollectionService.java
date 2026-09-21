@@ -1,6 +1,7 @@
 package com.bienvenueblainville.collection;
 
 import com.bienvenueblainville.collection.dto.CollectionEventRequest;
+import com.bienvenueblainville.common.Page;
 import com.bienvenueblainville.common.Sector;
 import com.bienvenueblainville.config.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
@@ -51,6 +52,20 @@ public class CollectionService {
 
     public List<CollectionEvent> all() {
         return mapper.findAll();
+    }
+
+    /**
+     * One page of the schedule, newest first.
+     *
+     * <p>The admin console used to list every row. That was fine when the
+     * calendar was a short hand-written seed; since V12 it extends itself to a
+     * rolling horizon and never prunes what is behind, so the table only grows
+     * - and an administrator looking for next Thursday had to scroll past
+     * every collection since August.
+     */
+    public Page<CollectionEvent> page(int page, int size) {
+        long total = mapper.countAll();
+        return new Page<>(mapper.findPage(page * size, size), page, size, total);
     }
 
     // allEntries: a single schedule edit can change the answer for several

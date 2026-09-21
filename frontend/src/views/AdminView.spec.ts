@@ -88,7 +88,9 @@ describe("AdminView editing", () => {
     localStorage.clear();
     get.mockImplementation(async (path: string) => {
       if (path === "/admin/sorting-items") return [sortingItem];
-      if (path === "/admin/collections") return [collectionEvent];
+      if (path.startsWith("/admin/collections")) {
+        return { items: [collectionEvent], page: 0, size: 25, total: 1 };
+      }
       return [];
     });
     post.mockResolvedValue({});
@@ -180,6 +182,85 @@ describe("AdminView editing", () => {
     expect(payload.noteFr).toBe("Collecte du jeudi.");
     expect(payload.noteZh).toBe("周四收集。");
     expect(payload.sourceUrl).toBe("https://blainville.ca/organics");
+  });
+
+  describe("schedule paging", () => {
+    /** 118 collections, the shape the self-extending calendar produces. */
+    function pagedBackend(total: number) {
+      get.mockImplementation(async (path: string) => {
+        if (path === "/admin/sorting-items") return [sortingItem];
+        if (path.startsWith("/admin/collections")) {
+          const params = new URLSearchParams(path.split("?")[1] ?? "");
+          const page = Number(params.get("page") ?? 0);
+          const size = Number(params.get("size") ?? 25);
+          const items = Array.from(
+            { length: Math.max(0, Math.min(size, total - page * size)) },
+            (_, i) => ({ ...collectionEvent, id: page * size + i + 1 })
+          );
+          return { items, page, size, total };
+        }
+        return [];
+      });
+    }
+
+    const pager = (wrapper: ReturnType<typeof mount>) =>
+      panel(wrapper, "Calendrier des collectes").find(".admin-pager");
+
+    it("asks the server for one page, not the whole table", async () => {
+      pagedBackend(118);
+      await mountAdmin();
+
+      // The point of the change: 118 rows must not arrive in one response.
+      const call = get.mock.calls.map(String).find((path) => path.includes("/admin/collections"))!;
+      expect(call).toContain("page=0");
+      expect(call).toContain("size=25");
+    });
+
+    it("says where you are, not which page you are on", async () => {
+      pagedBackend(118);
+      const wrapper = await mountAdmin();
+
+      expect(pager(wrapper).text()).toContain("1-25 / 118");
+    });
+
+    it("moves forward and back, and stops at both ends", async () => {
+      pagedBackend(118);
+      const wrapper = await mountAdmin();
+
+      const previous = () => pager(wrapper).findAll("button")[0];
+      const next = () => pager(wrapper).findAll("button")[1];
+
+      expect(previous().attributes("disabled")).toBeDefined();
+
+      await next().trigger("click");
+      await flushPromises();
+      expect(pager(wrapper).text()).toContain("26-50 / 118");
+      expect(previous().attributes("disabled")).toBeUndefined();
+
+      await previous().trigger("click");
+      await flushPromises();
+      expect(pager(wrapper).text()).toContain("1-25 / 118");
+    });
+
+    it("does not offer a next page on the last one, where the range is short", async () => {
+      pagedBackend(30);
+      const wrapper = await mountAdmin();
+
+      await pager(wrapper).findAll("button")[1].trigger("click");
+      await flushPromises();
+
+      // Five rows, not twenty-five: the range has to come from what arrived.
+      expect(pager(wrapper).text()).toContain("26-30 / 30");
+      expect(pager(wrapper).findAll("button")[1].attributes("disabled")).toBeDefined();
+    });
+
+    it("counts the whole schedule in the summary card, not the visible page", async () => {
+      pagedBackend(118);
+      const wrapper = await mountAdmin();
+
+      const scheduleCard = wrapper.findAll(".admin-stat")[0];
+      expect(scheduleCard.text()).toContain("118");
+    });
   });
 
   it("goes back to creating after the edit is cancelled", async () => {

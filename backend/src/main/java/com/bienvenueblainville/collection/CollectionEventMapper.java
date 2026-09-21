@@ -19,6 +19,10 @@ public interface CollectionEventMapper {
 
     List<CollectionEvent> findAll();
 
+    List<CollectionEvent> findPage(@Param("offset") int offset, @Param("limit") int limit);
+
+    long countAll();
+
     Optional<CollectionEvent> findById(@Param("id") Long id);
 
     void insert(Map<String, Object> params);

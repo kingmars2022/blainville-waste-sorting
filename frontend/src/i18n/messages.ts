@@ -145,6 +145,9 @@ export const messages = {
     "admin.active": "Actif",
     "admin.noNotices": "Aucun avis publie",
     "admin.noScheduleEvents": "Aucune collecte enregistree",
+    "admin.previous": "Precedent",
+    "admin.next": "Suivant",
+    "admin.showing": "Affichage de",
     "admin.noSortingItems": "Aucun article de tri enregistre",
     "admin.translationsSummary": "articles de tri, chacun avec fr/en/zh obligatoires (valide par l'API)."
   },
@@ -290,6 +293,9 @@ export const messages = {
     "admin.active": "Active",
     "admin.noNotices": "No notices published",
     "admin.noScheduleEvents": "No collections recorded",
+    "admin.previous": "Previous",
+    "admin.next": "Next",
+    "admin.showing": "Showing",
     "admin.noSortingItems": "No sorting items recorded",
     "admin.translationsSummary": "sorting items, each with required fr/en/zh (enforced by the API)."
   },
@@ -435,6 +441,9 @@ export const messages = {
     "admin.active": "启用",
     "admin.noNotices": "暂无已发布的通知",
     "admin.noScheduleEvents": "暂无收集记录",
+    "admin.previous": "上一页",
+    "admin.next": "下一页",
+    "admin.showing": "显示",
     "admin.noSortingItems": "暂无分类条目",
     "admin.translationsSummary": "个分类条目，每个都强制要求 fr/en/zh 三语齐全（由后端 API 校验）。"
   }

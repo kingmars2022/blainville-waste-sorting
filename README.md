@@ -267,7 +267,7 @@ TLS, and where the frontend finds the API.
 
 ## Tests
 
-163 tests: 72 backend unit, 72 backend integration, 19 frontend.
+173 tests: 72 backend unit, 77 backend integration, 24 frontend.
 
 | Suite | Tests | What it covers |
 |---|---|---|
@@ -288,6 +288,7 @@ TLS, and where the frontend finds the API.
 | `SortingGuideIntegrationTest` | 6 | one source of truth: examples, ordering, seasonal wording, the merged duplicate |
 | `CollectionCalendarIntegrationTest` | 4 | the calendar a year out, repeat runs, and a cancellation that stays cancelled |
 | `CorsIntegrationTest` | 4 | the origin list is enforced, trimmed, and exposes the one header the browser reads |
+| `CollectionPagingIntegrationTest` | 5 | pages partition the schedule, the total is the total, the size is capped |
 | `ResidentQueryInsightsIntegrationTest` | 5 | question → Kafka → MongoDB → gap report, and no resident identified |
 | `QueryEventPublisherTest` | 4 | the events gate, and both failure modes kept apart |
 | `AuditStoreIntegrationTest` | 6 | one audit contract, run against MongoDB and MySQL JSON |
@@ -307,7 +308,7 @@ Frontend, with Vitest in happy-dom — no browser, no backend, runs in about a s
 |---|---|---|
 | `client.spec.ts` | 6 | bearer token, 401 logs out, Retry-After parsing, 204 |
 | `photo.spec.ts` | 5 | retries while preparing, never retries a missing API key, gives up |
-| `AdminView.spec.ts` | 4 | POST vs PUT, and every field an edit did not touch surviving it |
+| `AdminView.spec.ts` | 9 | POST vs PUT, every field an edit did not touch surviving it, and the schedule pager |
 | `preferences.spec.ts` | 4 | defaults, persistence, and unreadable storage not taking the app down |
 
 Unit tests need nothing but the JVM:

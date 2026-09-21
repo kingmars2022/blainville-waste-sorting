@@ -124,11 +124,37 @@ const noticeError = ref("");
 const events = ref<CollectionEvent[]>([]);
 const eventError = ref("");
 
+// The schedule is the one list that grows without an administrator adding
+// anything: the calendar extends itself to a rolling horizon and nothing
+// prunes what is behind. So it is paged on the server rather than fetched
+// whole and sliced here - fetching whole is the part that stops scaling.
+const EVENTS_PER_PAGE = 25;
+const eventPage = ref(0);
+const eventTotal = ref(0);
+
+type Page<T> = { items: T[]; page: number; size: number; total: number };
+
+const eventRange = computed(() => {
+  if (eventTotal.value === 0) {
+    return { first: 0, last: 0, total: 0 };
+  }
+  const first = eventPage.value * EVENTS_PER_PAGE + 1;
+  return {
+    first,
+    last: Math.min(first + events.value.length - 1, eventTotal.value),
+    total: eventTotal.value
+  };
+});
+
+const hasNextEventPage = computed(
+  () => (eventPage.value + 1) * EVENTS_PER_PAGE < eventTotal.value
+);
+
 const sortingItems = ref<SortingItem[]>([]);
 const sortingError = ref("");
 
 const summaryCards = computed(() => [
-  { key: "schedule" as const, value: events.value.length },
+  { key: "schedule" as const, value: eventTotal.value },
   { key: "sorting" as const, value: sortingItems.value.length },
   { key: "notices" as const, value: notices.value.length }
 ]);
@@ -241,11 +267,20 @@ const editingEventId = ref<number | null>(null);
 
 async function loadEvents() {
   try {
-    events.value = await api.get<CollectionEvent[]>("/admin/collections");
+    const page = await api.get<Page<CollectionEvent>>(
+      `/admin/collections?page=${eventPage.value}&size=${EVENTS_PER_PAGE}`
+    );
+    events.value = page.items;
+    eventTotal.value = page.total;
     eventError.value = "";
   } catch (err) {
     eventError.value = err instanceof Error ? err.message : "Failed to load collections";
   }
+}
+
+async function goToEventPage(page: number) {
+  eventPage.value = Math.max(0, page);
+  await loadEvents();
 }
 
 async function saveEvent() {
@@ -301,6 +336,12 @@ function cancelEventEdit() {
 async function deleteEvent(id: number) {
   await api.delete(`/admin/collections/${id}`);
   await loadEvents();
+
+  // Deleting the last row of the last page would otherwise leave an empty
+  // table with no way back except the previous-page button.
+  if (events.value.length === 0 && eventPage.value > 0) {
+    await goToEventPage(eventPage.value - 1);
+  }
 }
 
 // --- Sorting items ---------------------------------------------------------
@@ -623,6 +664,31 @@ onMounted(() => {
           </tbody>
         </table>
         <p v-else class="admin-note">{{ t("admin.noScheduleEvents") }}</p>
+
+        <!--
+          The schedule grows on its own, so this is the one table that needs
+          a pager. Range and total rather than a page number: "26-50 of 118"
+          says where you are; "page 2" does not.
+        -->
+        <div v-if="eventTotal > 0" class="admin-pager">
+          <button
+            type="button"
+            :disabled="eventPage === 0"
+            @click="goToEventPage(eventPage - 1)"
+          >
+            {{ t("admin.previous") }}
+          </button>
+          <span>
+            {{ t("admin.showing") }} {{ eventRange.first }}-{{ eventRange.last }} / {{ eventRange.total }}
+          </span>
+          <button
+            type="button"
+            :disabled="!hasNextEventPage"
+            @click="goToEventPage(eventPage + 1)"
+          >
+            {{ t("admin.next") }}
+          </button>
+        </div>
       </section>
 
       <section class="admin-panel">

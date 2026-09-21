@@ -4,7 +4,12 @@ import com.bienvenueblainville.collection.dto.CollectionEventRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import com.bienvenueblainville.common.Page;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -15,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/api/admin/collections")
 public class AdminCollectionController {
@@ -24,9 +30,19 @@ public class AdminCollectionController {
         this.service = service;
     }
 
+    /**
+     * The schedule, a page at a time.
+     *
+     * <p>{@code size} is capped rather than free: the calendar grows without
+     * bound, and an unbounded page size is an unbounded query however
+     * politely it is asked for.
+     */
     @GetMapping
-    public List<CollectionEvent> all() {
-        return service.all();
+    public Page<CollectionEvent> list(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "25") @Min(1) @Max(100) int size
+    ) {
+        return service.page(page, size);
     }
 
     @PostMapping

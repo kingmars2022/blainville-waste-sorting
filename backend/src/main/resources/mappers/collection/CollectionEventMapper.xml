@@ -20,6 +20,23 @@
         order by collection_date desc, collection_type asc
     </select>
 
+    <!--
+        Same ordering as findAll, so a page is a window onto the same list
+        rather than a differently sorted one. collection_type breaks ties so
+        the window is stable: two events on one date must not swap places
+        between page one and page two.
+    -->
+    <select id="findPage" resultType="com.bienvenueblainville.collection.CollectionEvent">
+        select <include refid="columns"/>
+        from collection_event
+        order by collection_date desc, collection_type asc, id asc
+        limit #{limit} offset #{offset}
+    </select>
+
+    <select id="countAll" resultType="long">
+        select count(*) from collection_event
+    </select>
+
     <select id="findById" resultType="com.bienvenueblainville.collection.CollectionEvent">
         select <include refid="columns"/>
         from collection_event
