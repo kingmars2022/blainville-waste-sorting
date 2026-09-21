@@ -9,6 +9,16 @@ the sorting guide and public notices.
 and the pages, on a free tier that sleeps when idle, so the first request after a quiet spell takes
 about a minute to wake the container and the database.
 
+> **In 30 seconds:** residents of Blainville, Quebec ask "which bin goes out, and when?" and get a straight answer in French, English or Chinese. Administrators keep the collection schedule and the sorting guide up to date from a back office. When someone asks something the city's guide does not cover, the assistant says so instead of guessing.
+
+<p>
+<img src="docs/verification/screenshots/01-home-fr.png" width="240" alt="Home page showing the next collection" />
+<img src="docs/verification/screenshots/10-assistant-fr.png" width="240" alt="Sorting assistant answering a question from the guide" />
+<img src="docs/verification/screenshots/11-assistant-refusal.png" width="240" alt="Sorting assistant refusing a question the guide does not cover" />
+</p>
+
+**How it was built:** with AI assistance (Claude Code). Commits co-authored by Claude are marked as such in the history.
+
 ```mermaid
 flowchart LR
     V["Vue 3 console<br/>FR / EN / ZH"] -->|"Bearer JWT"| F["JwtAuthenticationFilter"]
