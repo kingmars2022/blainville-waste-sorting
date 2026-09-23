@@ -1,7 +1,7 @@
 # Blainville Waste Sorting Platform
 
 A website that tells residents of Blainville, Quebec which bin to put out tonight and
-where any item belongs, in French, English or Chinese.
+where any item belongs.
 
 **Try it: <https://blainville-waste-sorting.onrender.com/>**
 (It runs on a free server that sleeps when nobody is using it, so the first visit can take
@@ -27,8 +27,7 @@ means garbage sitting at home for another week or two.
 
 ## Who it's for
 
-- **Residents**, especially people who just moved to Blainville and people who are more
-  comfortable in English or Chinese than in French.
+- **Residents**, especially people who just moved to Blainville.
 - **City staff** who need to keep the schedule, the sorting rules and public notices up to
   date.
 
@@ -42,7 +41,7 @@ means garbage sitting at home for another week or two.
 2. **Look up any item.** Type "pizza box", "battery" or "old sofa" and get the right bin or
    drop-off location, with instructions.
 3. **Ask in your own words.** Not sure what an item is called? Ask a question like "Where
-   does a dirty pizza box go?" in French, English or Chinese. The answer shows which part of
+   does a dirty pizza box go?" The answer shows which part of
    the city's guide it came from, so you can check it.
 4. **Take a photo.** If you don't know what to call something, photograph it. The site works
    out what it is, then looks it up in the city's guide.
@@ -56,10 +55,10 @@ means garbage sitting at home for another week or two.
 ### As city staff
 
 1. **Keep everything current from one place.** Update the collection calendar, add or fix
-   sorting rules, and publish notices, in all three languages, without a developer.
+   sorting rules, and publish notices, without a developer.
 2. **Describe a change in one sentence.** For example: "Thursday's compost pickup is moved
-   to Friday, tell residents." The AI assistant prepares the calendar change and a notice in
-   three languages, then waits. Nothing changes until a staff member reviews it and clicks
+   to Friday, tell residents." The AI assistant prepares the calendar change and a notice,
+   then waits. Nothing changes until a staff member reviews it and clicks
    approve.
 3. **See what residents are asking that the guide doesn't cover.** For example, if many
    people asked about aquariums last month, staff know what to add next.
@@ -73,8 +72,8 @@ means garbage sitting at home for another week or two.
 
 - **The assistant never guesses.** A wrong answer about garbage is worse than no answer,
   because the resident trusts it and puts the item in the wrong bin. So the assistant answers
-  only from the city's own guide. If the guide doesn't cover a question, it says it doesn't
-  know and points to the city, instead of making something up.
+  only from the city's own guide. If the guide doesn't cover a question, it tells the
+  resident to check the city's website, instead of making something up.
 - **For photos, the AI only names the object. The city's guide decides the bin.** A general
   AI would answer from recycling rules in general, and Blainville's rules are not general.
 - **The AI can't change anything by itself.** Staff always see exactly what will change and
@@ -82,8 +81,6 @@ means garbage sitting at home for another week or two.
   bin.
 - **Photos are cleaned before they are stored.** Phone photos contain the GPS location where
   they were taken, often the resident's own home. That location is removed.
-- **French first.** It is a Quebec city, so French is the main language, with English and
-  Chinese for newcomers.
 
 ## What it achieves
 
