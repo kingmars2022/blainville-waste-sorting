@@ -117,7 +117,7 @@ Managed MySQL normally requires TLS — `sslMode=REQUIRED` is the MySQL
 Connector/J parameter for that.
 
 Nothing else to do: **Flyway creates every table and seeds the data on first
-boot** (16 migrations, verified to apply cleanly to an empty database).
+boot** (17 migrations, verified to apply cleanly to an empty database).
 
 ### 2. Redis — skip it
 

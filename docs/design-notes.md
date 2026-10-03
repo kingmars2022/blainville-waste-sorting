@@ -982,7 +982,7 @@ Completed:
 - Admin CRUD for collection schedules, sorting items (with required French/English/Chinese translations, locations, and keywords), and special notices, wired end to end from the admin UI through MyBatis to `collection_event`, `sorting_item`/`sorting_item_translation`/`sorting_item_keyword`, and `special_notice`.
 - `HomeView` calls `GET /api/collections/upcoming` for the signed-in resident's sector and shows the real next collection (today/tomorrow framing, put-out/bring-back guidance) plus a short list of upcoming collections, instead of static sample data.
 - MyBatis mapper foundation and a normalized 13-table MySQL schema, where `collection_event.auto_generated` records which rows the calendar produced so a rebuild can leave an administrator's own entries alone.
-- Flyway migrations for schema and seed data (`V1`-`V16`).
+- Flyway migrations for schema and seed data (`V1`-`V17`).
 - A collection calendar that extends itself, from the city's own patterns. The five recurring rules in `collection_schedule_rule` - garbage and recycling alternating on Tuesdays in the south and Wednesdays in the north, organics every Thursday city-wide - are read off the official 2026 calendar in `V15`, and are materialized out to a rolling 180-day horizon on startup and daily, so the calendar cannot quietly run out the way the hand-written `V6` rows were going to on 2026-10-30. Generation never crosses a rule's high-water mark, so an administrator's cancellation is not undone overnight, and `HolidayShift` moves an occurrence off a day the city is closed rather than cancelling it.
 - `V15` is also where a quiet wrong answer was found. Until it, the database had no household-waste rule at all and anchored recycling to the garbage fortnight, so a resident in the south was shown the blue bin on 10 and 24 November - black-bin days on the city's calendar - and shown nothing on the 3rd and 17th, when recycling actually goes out. Every other property of the calendar was already tested and already true; they were true of a calendar naming the wrong bin.
 - The sorting guide served from MySQL to residents, the assistant, the photo lookup and the admin console alike (`GET /api/sorting-items`). It previously existed twice - a TypeScript file for the resident cards and the database for everything else - so an admin edit changed one and not the other. Migrations V10/V11 carried the two fields only the static copy had (`examples`, seasonal `availability`) and merged a duplicate entry.
@@ -990,7 +990,7 @@ Completed:
 - Location and address support for special sorting records.
 - French, English, and Chinese i18n foundation, including the auth and admin flows.
 - An admin agent (`POST /api/admin/agent/plan`, `POST /api/admin/agent/plans/{id}/execute`): Claude tool use over the existing collection and notice services, where read tools execute during planning and write tools are recorded as a plan for a human to approve. Plans live in Redis for 15 minutes, are single-use, and are bound to the administrator they were shown to. Returns 503 with an explanation when no API key is configured.
-- A grounded trilingual sorting assistant (`POST /api/assistant/ask`): MySQL full-text retrieval over `sorting_item_translation`/`sorting_item_keyword` with two parsers (word for French/English, ngram for Chinese), an application-side stopword filter, an explicit refusal when nothing relevant is retrieved, per-IP rate limiting in Redis, and a pluggable composer that is either a no-cost template or Claude. Scored 12/12 precision@1 and 6/6 refusal accuracy over an 18-question set.
+- A grounded trilingual sorting assistant (`POST /api/assistant/ask`): MySQL full-text retrieval over `sorting_item_translation`/`sorting_item_keyword` with two parsers (word for French/English, ngram for Chinese), an application-side stopword filter, an explicit refusal when nothing relevant is retrieved, per-IP rate limiting in Redis, and a pluggable composer that is either a no-cost template or Claude. Scored 19/19 precision@1 and 6/6 refusal accuracy over a 25-question set.
 - Redis cache-aside layer over the two hot public reads (`@Cacheable` on the upcoming schedule and the active notices, keyed by day so nothing goes stale at midnight), with `@CacheEvict` on every admin write, a `CacheErrorHandler` that degrades to MySQL instead of failing the request, and fail-fast Lettuce options so a dead Redis costs milliseconds rather than seconds. Fully optional at runtime via `CACHE_TYPE=none`.
 - Resident photo questions (`POST /api/photos/upload-url`, `POST /api/photos/{id}/identify`): the browser uploads straight to S3 on a presigned URL with the size and content type signed in, a Lambda strips EXIF and resizes on object creation, and only the processed copy is ever served. Claude vision names the object; the sorting guide, not the model, decides the bin.
 - A transactional outbox and Kafka pipeline for notices: the event is written in the same transaction as the notice, a relay drains it to the broker, and two consumer groups read one topic - the resident inbox fan-out and the audit trail. Delivery is at-least-once and both consumers are idempotent. `EVENTS_ENABLED=false` stops the relay without stopping the recording.
@@ -1000,7 +1000,7 @@ Completed:
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- 208 tests: 87 that need nothing but the JVM, 92 that run against real infrastructure, and 29 in the browser runtime.
+- 210 tests: 87 that need nothing but the JVM, 94 that run against real infrastructure, and 29 in the browser runtime.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -1051,7 +1051,9 @@ This is the same lesson as the six startup bugs above, in a different costume: "
 
 ### Does the assistant make things up?
 
-Not measurably, and the design is what stops it rather than the prompt. Scored over 18 questions in all three languages ([`verification/assistant_eval.py`](verification/assistant_eval.py)): **precision@1 12/12, refusal accuracy 6/6**.
+Not measurably, and the design is what stops it rather than the prompt. Scored over 25 questions in all three languages ([`verification/assistant_eval.py`](verification/assistant_eval.py)): **precision@1 19/19, refusal accuracy 6/6**.
+
+The set grew with the guide, and earned its keep doing so. Seven cases were added for the entries `V17` imported, and one of them failed: "Ou jeter les os de poulet ?" was refused while the English "Where do chicken bones go?" was answered. `os` is two letters, below MySQL's `innodb_ft_min_token_size`, so it is never a token and never matches; `bones` is long enough to be one. The data now carries words the index can hold (`poulet`, `volaille`, `ossements`), and both questions are answered. An eval set that only ever confirms what already works is not measuring anything.
 
 Getting the refusals right took two rounds of measurement, and both findings were invisible from reading the code:
 
@@ -1109,7 +1111,7 @@ This project is not an official municipal website.
 
 Current limitations:
 
-- The sorting data is an initial structured seed, not a complete official import. It is served from the `sorting_item` tables to residents, the assistant, the photo lookup and the admin console alike - the static frontend copy was removed in `V10`/`V11`.
+- The sorting data comes from the city's printed 2026 calendar (`V17` imports the bac brun / bac bleu / bac noir / encombrants panels on page 2, taking the guide from 14 entries to 35). That document is a summary: the city's own online tool at blainville.ca/tri covers more materials than a two-page calendar can, and importing it is not something this repository has done. The data is served from the `sorting_item` tables to residents, the assistant, the photo lookup and the admin console alike - the static frontend copy was removed in `V10`/`V11`.
 - The collection patterns and the one holiday shift come from the city's official 2026 calendar, which is the only year that document covers. The patterns recur, so the calendar keeps generating past 2026 - but whether Blainville moves a weekday, or shifts a statutory holiday that lands on a collection day, in a year this repository has never seen is not something it can know. `V14`'s guesses about 2027 were deleted by `V15` precisely because the 2026 document contradicted one of them: Canada Day falls on a Wednesday in 2026 and is collected normally.
 - Three things are implemented but have never run against the real service: live Anthropic API calls, the Lambda on AWS, and the API Gateway deployment. Everything about them was verified against local equivalents (a real S3 API, a real Kafka broker, a real MongoDB wire protocol), and that difference is recorded in `verification/photo-pipeline-results.md` rather than glossed over. The deployment jar itself is now loaded and run from a bare classpath, which is the part of "never run on AWS" that could be checked here - it caught a missing HTTP client dependency that would have failed at cold start.
 - Push notifications are not implemented.
@@ -1152,7 +1154,7 @@ Long-term:
 - A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
 - A recurring calendar that extends itself without ever undoing an administrator's cancellation.
 - Photo uploads that never pass through the application, with EXIF stripped before anything is served.
-- 208 tests, of which 92 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
+- 210 tests, of which 94 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 

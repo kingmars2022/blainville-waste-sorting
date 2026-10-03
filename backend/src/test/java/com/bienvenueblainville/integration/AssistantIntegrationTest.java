@@ -108,6 +108,31 @@ class AssistantIntegrationTest {
     }
 
     @Test
+    void answersTheQuestionTheGuideExistsFor() throws Exception {
+        // The one entry on the city's list where the obvious guess is wrong:
+        // "compostable" plastic goes in the BLACK bin, because it fragments and
+        // contaminates recyclable plastic rather than breaking down. A resident
+        // who guesses sends it to the brown bin, so this is worth a test in CI
+        // rather than only a line in an eval run.
+        JsonNode answer = ask("Can I put compostable utensils in the brown bin?", "en");
+
+        assertThat(answer.get("grounded").asBoolean()).isTrue();
+        assertThat(answer.get("sources").get(0).get("name").asText()).contains("ompostable");
+    }
+
+    @Test
+    void findsFrenchMeatScrapsThroughAWordLongEnoughToIndex() throws Exception {
+        // "os" is two letters, below MySQL's innodb_ft_min_token_size, so it is
+        // never a token. This question was refused until V17 added words the
+        // index can hold - while the English "chicken bones" worked all along,
+        // because "bones" is long enough.
+        JsonNode answer = ask("Où jeter les os de poulet ?", "fr");
+
+        assertThat(answer.get("grounded").asBoolean()).isTrue();
+        assertThat(answer.get("sources").get(0).get("name").asText()).contains("Viandes");
+    }
+
+    @Test
     void refusesWhenTheGuideDoesNotCoverTheQuestion() throws Exception {
         JsonNode answer = ask("what is the capital of Mongolia", "en");
 

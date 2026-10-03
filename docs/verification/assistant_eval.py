@@ -42,6 +42,19 @@ CASES = [
     ("废电池怎么处理？",                            "zh", True,  "ecocentre"),
     ("水果残渣放哪个桶？",                          "zh", True,  "水果"),
     ("圣诞树怎么丢弃？",                            "zh", True,  "圣诞树"),
+    # --- answerable, and the answer is the surprising one (V17) ---
+    #
+    # These are the cases the guide exists for. A resident who already knows
+    # the answer does not look it up; the ones worth getting right are where
+    # the obvious guess is wrong. "Compostable" plastic is garbage, bones are
+    # organic, and a broken mirror is a bulky pickup rather than a bin.
+    ("Où vont les ustensiles compostables ?",     "fr", True,  "compostable"),
+    ("Can I put compostable utensils in the brown bin?", "en", True, "ompostable"),
+    ("Où jeter les os de poulet ?",               "fr", True,  "Viandes"),
+    ("Where do chicken bones go?",                "en", True,  "Meat"),
+    ("Où va un miroir cassé ?",                   "fr", True,  "miroir"),
+    ("骨头放哪个桶？",                              "zh", True,  "骨"),
+    ("咖啡渣怎么处理？",                            "zh", True,  "咖啡"),
     # --- unanswerable: the guide has nothing, so it must refuse ---
     ("Comment réparer ma voiture ?",              "fr", False, None),
     ("Quel est le numéro de téléphone du maire ?", "fr", False, None),
