@@ -55,6 +55,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/collections/**").permitAll()
                         .requestMatchers("/api/notices/active").permitAll()
+                        // The browser needs this before it can subscribe, and it is a
+                        // public key. Creating a subscription is authenticated.
+                        .requestMatchers(HttpMethod.GET, "/api/push/public-key").permitAll()
                         // The sorting guide itself. Public, because it is the
                         // page residents come for.
                         .requestMatchers(HttpMethod.GET, "/api/sorting-items").permitAll()

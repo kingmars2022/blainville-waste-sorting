@@ -2,6 +2,7 @@ package com.bienvenueblainville.events;
 
 import com.bienvenueblainville.audit.AuditRecord;
 import com.bienvenueblainville.audit.AuditStore;
+import com.bienvenueblainville.push.PushNotifier;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,11 +37,18 @@ public class NoticeEventConsumers {
     private final AuditStore auditStore;
     private final NotificationOutbox notifications;
     private final ObjectMapper objectMapper;
+    private final PushNotifier pushNotifier;
 
-    public NoticeEventConsumers(AuditStore auditStore, NotificationOutbox notifications, ObjectMapper objectMapper) {
+    public NoticeEventConsumers(
+            AuditStore auditStore,
+            NotificationOutbox notifications,
+            ObjectMapper objectMapper,
+            PushNotifier pushNotifier
+    ) {
         this.auditStore = auditStore;
         this.notifications = notifications;
         this.objectMapper = objectMapper;
+        this.pushNotifier = pushNotifier;
     }
 
     /**
@@ -85,6 +93,12 @@ public class NoticeEventConsumers {
         }
 
         notifications.queueForActiveNotice(event.eventId(), event.noticeId());
+
+        // After the inbox, and only after: the inbox is the system of record,
+        // so a push that fails costs a resident a buzz rather than a notice.
+        // PushNotifier swallows its own failures for the same reason - this
+        // consumer must not be stalled by somebody's unreachable phone.
+        pushNotifier.pushNotice(event.noticeId());
     }
 
     private NoticeEvent read(String payload) {

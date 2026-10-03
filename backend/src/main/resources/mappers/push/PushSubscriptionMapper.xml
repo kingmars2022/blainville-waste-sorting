@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bienvenueblainville.push.PushSubscriptionMapper">
+    <!-- Re-subscribing on the same device returns the same endpoint, so this
+         updates rather than duplicating. The keys do change on re-subscribe. -->
+    <insert id="upsert">
+        insert into push_subscription (user_id, endpoint, p256dh, auth, language_code)
+        values (#{userId}, #{endpoint}, #{p256dh}, #{auth}, #{languageCode})
+        on duplicate key update
+            user_id = values(user_id),
+            p256dh = values(p256dh),
+            auth = values(auth),
+            language_code = values(language_code)
+    </insert>
+
+    <delete id="deleteByEndpoint">
+        delete from push_subscription where endpoint = #{endpoint}
+    </delete>
+
+    <delete id="deleteByEndpointForUser">
+        delete from push_subscription where endpoint = #{endpoint} and user_id = #{userId}
+    </delete>
+
+    <!-- The same condition the inbox fan-out uses, so the two deliveries agree
+         on who is being told. -->
+    <select id="findForResidentsWithReminders" resultType="com.bienvenueblainville.push.PushSubscription">
+        select s.id, s.user_id, s.endpoint, s.p256dh, s.auth, s.language_code
+        from push_subscription s
+        join user_preference p on p.user_id = s.user_id
+        where p.reminder_enabled = true
+    </select>
+
+    <select id="findForUser" resultType="com.bienvenueblainville.push.PushSubscription">
+        select id, user_id, endpoint, p256dh, auth, language_code
+        from push_subscription
+        where user_id = #{userId}
+        order by id asc
+    </select>
+</mapper>

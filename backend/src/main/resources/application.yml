@@ -82,6 +82,17 @@ app:
   admin:
     email: ${APP_ADMIN_EMAIL:admin@blainville.local}
     password: ${APP_ADMIN_PASSWORD:change-this-development-admin-password}
+  push:
+    # Off unless an operator has generated a key pair. The resident inbox works
+    # either way; push is a second delivery of something already stored, never
+    # the only one. Generate keys with:
+    #   mvn -q exec:java -Dexec.mainClass=com.bienvenueblainville.push.VapidKeyGenerator
+    enabled: ${PUSH_ENABLED:false}
+    public-key: ${PUSH_PUBLIC_KEY:}
+    private-key: ${PUSH_PRIVATE_KEY:}
+    # RFC 8292 requires a way for a push service to reach whoever is sending.
+    subject: ${PUSH_SUBJECT:mailto:info@blainville.ca}
+
   assistant:
     # `template` answers straight from the retrieved guide entries - no API key,
     # no cost, works on a fresh clone. Set provider=anthropic and export

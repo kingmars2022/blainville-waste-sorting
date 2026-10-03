@@ -628,6 +628,14 @@ collection_schedule_rule
   Stores the recurring collection patterns - anchor date, interval, and the
   high-water mark of what has already been materialized into collection_event.
 
+push_subscription
+  Stores one browser on one device: the endpoint its push service listens on
+  and the two keys a message is encrypted to. The endpoint is unique, because
+  it identifies the device rather than the person - re-subscribing returns the
+  same one and must update rather than duplicate. Deleted when a push service
+  answers 404 or 410, which is the only way the server learns a subscription
+  is over.
+
 collection_holiday
   Stores the days the city does not collect and how far a collection landing
   on one moves. A table rather than hand-edited collection_event rows because
@@ -982,7 +990,7 @@ Completed:
 - Admin CRUD for collection schedules, sorting items (with required French/English/Chinese translations, locations, and keywords), and special notices, wired end to end from the admin UI through MyBatis to `collection_event`, `sorting_item`/`sorting_item_translation`/`sorting_item_keyword`, and `special_notice`.
 - `HomeView` calls `GET /api/collections/upcoming` for the signed-in resident's sector and shows the real next collection (today/tomorrow framing, put-out/bring-back guidance) plus a short list of upcoming collections, instead of static sample data.
 - MyBatis mapper foundation and a normalized 13-table MySQL schema, where `collection_event.auto_generated` records which rows the calendar produced so a rebuild can leave an administrator's own entries alone.
-- Flyway migrations for schema and seed data (`V1`-`V17`).
+- Flyway migrations for schema and seed data (`V1`-`V18`).
 - A collection calendar that extends itself, from the city's own patterns. The five recurring rules in `collection_schedule_rule` - garbage and recycling alternating on Tuesdays in the south and Wednesdays in the north, organics every Thursday city-wide - are read off the official 2026 calendar in `V15`, and are materialized out to a rolling 180-day horizon on startup and daily, so the calendar cannot quietly run out the way the hand-written `V6` rows were going to on 2026-10-30. Generation never crosses a rule's high-water mark, so an administrator's cancellation is not undone overnight, and `HolidayShift` moves an occurrence off a day the city is closed rather than cancelling it.
 - `V15` is also where a quiet wrong answer was found. Until it, the database had no household-waste rule at all and anchored recycling to the garbage fortnight, so a resident in the south was shown the blue bin on 10 and 24 November - black-bin days on the city's calendar - and shown nothing on the 3rd and 17th, when recycling actually goes out. Every other property of the calendar was already tested and already true; they were true of a calendar naming the wrong bin.
 - The sorting guide served from MySQL to residents, the assistant, the photo lookup and the admin console alike (`GET /api/sorting-items`). It previously existed twice - a TypeScript file for the resident cards and the database for everything else - so an admin edit changed one and not the other. Migrations V10/V11 carried the two fields only the static copy had (`examples`, seasonal `availability`) and merged a duplicate entry.
@@ -1000,7 +1008,7 @@ Completed:
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- 210 tests: 87 that need nothing but the JVM, 94 that run against real infrastructure, and 29 in the browser runtime.
+- 248 tests: 112 that need nothing but the JVM, 101 that run against real infrastructure, and 35 in the browser runtime.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -1114,7 +1122,11 @@ Current limitations:
 - The sorting data comes from the city's printed 2026 calendar (`V17` imports the bac brun / bac bleu / bac noir / encombrants panels on page 2, taking the guide from 14 entries to 35). That document is a summary: the city's own online tool at blainville.ca/tri covers more materials than a two-page calendar can, and importing it is not something this repository has done. The data is served from the `sorting_item` tables to residents, the assistant, the photo lookup and the admin console alike - the static frontend copy was removed in `V10`/`V11`.
 - The collection patterns and the one holiday shift come from the city's official 2026 calendar, which is the only year that document covers. The patterns recur, so the calendar keeps generating past 2026 - but whether Blainville moves a weekday, or shifts a statutory holiday that lands on a collection day, in a year this repository has never seen is not something it can know. `V14`'s guesses about 2027 were deleted by `V15` precisely because the 2026 document contradicted one of them: Canada Day falls on a Wednesday in 2026 and is collected normally.
 - Three things are implemented but have never run against the real service: live Anthropic API calls, the Lambda on AWS, and the API Gateway deployment. Everything about them was verified against local equivalents (a real S3 API, a real Kafka broker, a real MongoDB wire protocol), and that difference is recorded in `verification/photo-pipeline-results.md` rather than glossed over. The deployment jar itself is now loaded and run from a bare classpath, which is the part of "never run on AWS" that could be checked here - it caught a missing HTTP client dependency that would have failed at cold start.
-- Push notifications are not implemented.
+- Browser push is implemented (`V18`, `com.bienvenueblainville.push`) and off by default, because it needs a VAPID key pair an operator generates. It is a *second* delivery: `resident_notification` is written first and stays the system of record, so a revoked permission or an unreachable push service costs a resident a buzz rather than a notice, and nothing in the push path can fail the Kafka consumer that triggers it.
+
+  The encryption is RFC 8291 over RFC 8188's aes128gcm, written against the JDK rather than a library - and the reason that is defensible is that it is checked against somebody else's implementation rather than against itself. `WebPushCryptoTest` encrypts a fixed input and compares it byte for byte with output captured from `http_ece`, the JavaScript implementation the `web-push` library uses; `VapidAuthenticationTest` verifies a token that library signed, and a Java-signed token was verified by it in return. Two defects came out of that: the JDK's `KeyFactory` accepts a public key that is not a point on P-256, which is an invalid-curve attack an API caller can choose, so the point is now validated explicitly; and jjwt serialises a single `aud` as a one-element array where every reference implementation emits a string.
+
+  **What has never happened is a notification appearing on a real device.** That needs a browser and a live push service, neither of which exists where this was built. Everything up to the HTTP POST is tested, and the bytes that POST would carry are known to match what a browser's own decryption expects - but the last hop is unverified and is recorded as such rather than implied.
 - The deployment is a free-tier one, with the trade-offs that implies: the container sleeps after 15 minutes of inactivity, so the first request after a quiet spell pays a cold start, and Redis, Kafka, MongoDB and the photo pipeline are all switched off there (`CACHE_TYPE=none`, `EVENTS_ENABLED=false`, `AUDIT_STORE=mysql`, `ASSISTANT_PROVIDER=template`). What is deployed exercises the MySQL path, the sorting guide, the schedule, the notices, the admin console and the retrieval assistant's template provider - not the event pipeline, which remains verified locally against real brokers.
 - All municipal rules should be verified against official Blainville sources before public use.
 
@@ -1154,7 +1166,7 @@ Long-term:
 - A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
 - A recurring calendar that extends itself without ever undoing an administrator's cancellation.
 - Photo uploads that never pass through the application, with EXIF stripped before anything is served.
-- 210 tests, of which 94 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
+- 248 tests, of which 101 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 
