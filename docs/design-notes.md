@@ -989,7 +989,7 @@ Completed:
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- 180 tests: 75 that need nothing but the JVM, 81 that run against real infrastructure, and 24 in the browser runtime.
+- 194 tests: 87 that need nothing but the JVM, 83 that run against real infrastructure, and 24 in the browser runtime.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -1099,7 +1099,7 @@ This project is not an official municipal website.
 Current limitations:
 
 - The sorting data is an initial structured seed, not a complete official import. It is served from the `sorting_item` tables to residents, the assistant, the photo lookup and the admin console alike - the static frontend copy was removed in `V10`/`V11`.
-- The collection patterns in `collection_schedule_rule` are an illustrative weekly/biweekly schedule, not the official municipal calendar. The calendar no longer expires, but what it generates is still a plausible pattern rather than imported truth, and real holiday shifts are not in it.
+- The collection patterns in `collection_schedule_rule` are an illustrative weekly/biweekly schedule, not the official municipal calendar, and the same is true of `collection_holiday`: `V14` seeds the four fixed-date Quebec statutory holidays with a one-day shift and a null `source_url`, which is the column that says nobody has checked them against the city's own calendar. Quebec's four moving statutory holidays are deliberately absent rather than computed. The mechanism that shifts a collection off a closed day is real and tested; which days Blainville actually closes is data this repository does not have.
 - Three things are implemented but have never run against the real service: live Anthropic API calls, the Lambda on AWS, and the API Gateway deployment. Everything about them was verified against local equivalents (a real S3 API, a real Kafka broker, a real MongoDB wire protocol), and that difference is recorded in `verification/photo-pipeline-results.md` rather than glossed over. The deployment jar itself is now loaded and run from a bare classpath, which is the part of "never run on AWS" that could be checked here - it caught a missing HTTP client dependency that would have failed at cold start.
 - Push notifications are not implemented.
 - The deployment is a free-tier one, with the trade-offs that implies: the container sleeps after 15 minutes of inactivity, so the first request after a quiet spell pays a cold start, and Redis, Kafka, MongoDB and the photo pipeline are all switched off there (`CACHE_TYPE=none`, `EVENTS_ENABLED=false`, `AUDIT_STORE=mysql`, `ASSISTANT_PROVIDER=template`). What is deployed exercises the MySQL path, the sorting guide, the schedule, the notices, the admin console and the retrieval assistant's template provider - not the event pipeline, which remains verified locally against real brokers.
@@ -1114,6 +1114,7 @@ Medium-term:
 
 - Complete the Blainville sorting guide dataset.
 - Import full yearly collection calendars.
+- Import the official municipal collection calendar and the holidays that go with it, replacing the illustrative patterns in `collection_schedule_rule` and `collection_holiday`.
 - Add holiday and service-delay notices.
 - Improve admin validation for missing translations.
 - Add PWA support for installation on mobile devices.
@@ -1140,7 +1141,7 @@ Long-term:
 - A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
 - A recurring calendar that extends itself without ever undoing an administrator's cancellation.
 - Photo uploads that never pass through the application, with EXIF stripped before anything is served.
-- 180 tests, of which 81 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
+- 194 tests, of which 83 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 

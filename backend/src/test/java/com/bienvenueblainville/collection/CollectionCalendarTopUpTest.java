@@ -27,6 +27,8 @@ class CollectionCalendarTopUpTest {
     @Mock
     private CollectionScheduleRuleMapper rules;
     @Mock
+    private CollectionHolidayMapper holidays;
+    @Mock
     private CollectionEventMapper events;
     @Mock
     private CacheManager cacheManager;
@@ -34,12 +36,13 @@ class CollectionCalendarTopUpTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        when(holidays.findActiveFrom(any())).thenReturn(List.of());
     }
 
     private CollectionCalendarTopUp topUpOn(String today, int horizonDays) {
         Clock clock = Clock.fixed(
                 ZonedDateTime.of(LocalDate.parse(today).atStartOfDay(), ZONE).toInstant(), ZONE);
-        return new CollectionCalendarTopUp(rules, events, cacheManager, clock, true, horizonDays);
+        return new CollectionCalendarTopUp(rules, holidays, events, cacheManager, clock, true, horizonDays);
     }
 
     private CollectionScheduleRule weeklyThursday(String anchor, String generatedThrough) {
@@ -153,7 +156,7 @@ class CollectionCalendarTopUpTest {
     void doesNothingAtAllWhenTurnedOff() {
         Clock clock = Clock.fixed(
                 ZonedDateTime.of(LocalDate.parse("2026-10-30").atStartOfDay(), ZONE).toInstant(), ZONE);
-        new CollectionCalendarTopUp(rules, events, cacheManager, clock, false, 28).scheduledTopUp();
+        new CollectionCalendarTopUp(rules, holidays, events, cacheManager, clock, false, 28).scheduledTopUp();
 
         verify(events, never()).insertGenerated(any());
     }

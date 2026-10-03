@@ -12,8 +12,11 @@ import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Keeps the collection calendar from running out.
@@ -43,7 +46,13 @@ import java.util.Optional;
 public class CollectionCalendarTopUp {
     private static final Logger log = LoggerFactory.getLogger(CollectionCalendarTopUp.class);
 
+    /** fr/en/zh templates for the sentence appended to a moved collection. */
+    private static final String MOVED_FR = "Collecte d\u00e9plac\u00e9e en raison de {holiday}.";
+    private static final String MOVED_EN = "Collection moved because of {holiday}.";
+    private static final String MOVED_ZH = "\u56e0{holiday}\u987a\u5ef6\u3002";
+
     private final CollectionScheduleRuleMapper rules;
+    private final CollectionHolidayMapper holidays;
     private final CollectionEventMapper events;
     private final CacheManager cacheManager;
     private final Clock clock;
@@ -53,12 +62,13 @@ public class CollectionCalendarTopUp {
     @Autowired
     public CollectionCalendarTopUp(
             CollectionScheduleRuleMapper rules,
+            CollectionHolidayMapper holidays,
             CollectionEventMapper events,
             CacheManager cacheManager,
             @Value("${app.collection.calendar.enabled:true}") boolean enabled,
             @Value("${app.collection.calendar.horizon-days:180}") int horizonDays
     ) {
-        this(rules, events, cacheManager, Clock.systemDefaultZone(), enabled, horizonDays);
+        this(rules, holidays, events, cacheManager, Clock.systemDefaultZone(), enabled, horizonDays);
     }
 
     /**
@@ -68,6 +78,7 @@ public class CollectionCalendarTopUp {
      */
     public CollectionCalendarTopUp(
             CollectionScheduleRuleMapper rules,
+            CollectionHolidayMapper holidays,
             CollectionEventMapper events,
             CacheManager cacheManager,
             Clock clock,
@@ -75,6 +86,7 @@ public class CollectionCalendarTopUp {
             int horizonDays
     ) {
         this.rules = rules;
+        this.holidays = holidays;
         this.events = events;
         this.cacheManager = cacheManager;
         this.clock = clock;
@@ -116,6 +128,10 @@ public class CollectionCalendarTopUp {
         LocalDate horizon = today.plusDays(horizonDays);
         int written = 0;
 
+        // Loaded once per run rather than per rule: the table is small, and
+        // every rule asks it the same questions.
+        HolidayShift shift = HolidayShift.of(holidays.findActiveFrom(today.minusDays(1)));
+
         for (CollectionScheduleRule rule : rules.findActive()) {
             // Exclusive lower bound. Clamped to yesterday when the mark has
             // fallen behind, so a deployment that was down still generates
@@ -124,11 +140,34 @@ public class CollectionCalendarTopUp {
             LocalDate mark = rule.generatedThrough();
             LocalDate from = mark.isBefore(today) ? today.minusDays(1) : mark;
 
-            List<CollectionEvent> generated = rule.occurrencesAfter(from, horizon).stream()
-                    .map(date -> new CollectionEvent(
-                            null, date, rule.sector(), rule.collectionType(), rule.binColor(),
-                            rule.noteFr(), rule.noteEn(), rule.noteZh(), rule.sourceUrl()))
-                    .toList();
+            List<CollectionEvent> generated = new ArrayList<>();
+            Set<LocalDate> taken = new LinkedHashSet<>();
+            for (LocalDate date : rule.occurrencesAfter(from, horizon)) {
+                HolidayShift.Shifted shifted = shift.apply(date, rule.sector());
+
+                // A shift can push an occurrence past the horizon. It is kept:
+                // the horizon bounds how far ahead this job generates, not
+                // which collections are real, and dropping it would delete the
+                // one collection a holiday already made surprising. The mark
+                // still advances to the horizon, so the next run resumes from
+                // there and the unique key makes the repeat a no-op.
+                if (!taken.add(shifted.date())) {
+                    // Two occurrences of one rule landing on the same day. The
+                    // unique key would absorb the second silently; say so
+                    // instead, because it means a shift_days as long as the
+                    // rule's own cycle - data worth a human looking at.
+                    log.warn("Rule {} has two occurrences on {} after holiday shifting; keeping the first",
+                            rule.id(), shifted.date());
+                    continue;
+                }
+
+                generated.add(new CollectionEvent(
+                        null, shifted.date(), rule.sector(), rule.collectionType(), rule.binColor(),
+                        shifted.explain(rule.noteFr(), CollectionHoliday::nameFr, MOVED_FR),
+                        shifted.explain(rule.noteEn(), CollectionHoliday::nameEn, MOVED_EN),
+                        shifted.explain(rule.noteZh(), CollectionHoliday::nameZh, MOVED_ZH),
+                        rule.sourceUrl()));
+            }
 
             if (generated.isEmpty()) {
                 continue;

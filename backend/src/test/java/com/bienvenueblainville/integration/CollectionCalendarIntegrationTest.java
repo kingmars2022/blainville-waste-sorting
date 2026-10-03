@@ -3,6 +3,9 @@ package com.bienvenueblainville.integration;
 import com.bienvenueblainville.collection.CollectionCalendarTopUp;
 import com.bienvenueblainville.collection.CollectionEvent;
 import com.bienvenueblainville.collection.CollectionEventMapper;
+import com.bienvenueblainville.collection.CollectionHolidayMapper;
+import com.bienvenueblainville.collection.CollectionScheduleRule;
+import com.bienvenueblainville.collection.CollectionType;
 import com.bienvenueblainville.collection.CollectionScheduleRuleMapper;
 import com.bienvenueblainville.common.Sector;
 import org.junit.jupiter.api.AfterEach;
@@ -61,6 +64,8 @@ class CollectionCalendarIntegrationTest {
     @Autowired
     private CollectionEventMapper events;
     @Autowired
+    private CollectionHolidayMapper holidays;
+    @Autowired
     private CacheManager cacheManager;
     @Autowired
     private JdbcTemplate jdbc;
@@ -79,6 +84,7 @@ class CollectionCalendarIntegrationTest {
     @AfterEach
     void restore() {
         jdbc.update("delete from collection_event where collection_date > ?", watermark);
+        jdbc.update("delete from collection_holiday where source_url = 'test://holiday-shift'");
         marksBefore.forEach((id, mark) ->
                 jdbc.update("update collection_schedule_rule set generated_through = ? where id = ?", mark, id));
     }
@@ -86,7 +92,7 @@ class CollectionCalendarIntegrationTest {
     private CollectionCalendarTopUp topUpOn(String today) {
         Clock clock = Clock.fixed(
                 ZonedDateTime.of(LocalDate.parse(today).atStartOfDay(), ZONE).toInstant(), ZONE);
-        return new CollectionCalendarTopUp(rules, events, cacheManager, clock, true, 180);
+        return new CollectionCalendarTopUp(rules, holidays, events, cacheManager, clock, true, 180);
     }
 
     @Test
@@ -153,5 +159,64 @@ class CollectionCalendarIntegrationTest {
                 .noneMatch(event -> event.collectionDate().equals(cancelled.collectionDate())
                         && event.collectionType() == cancelled.collectionType()
                         && event.sector() == cancelled.sector());
+    }
+
+    /**
+     * Puts the calendar in a known state far enough out that no other test in
+     * the suite has generated there, closes the next organics collection, and
+     * returns the day that collection was originally due.
+     *
+     * <p>Self-contained on purpose: these assertions are about a specific day
+     * being empty, which any earlier top-up in the same database would
+     * otherwise have filled. The marks are restored by {@link #restore()}.
+     */
+    private LocalDate closeTheNextOrganicsCollection(LocalDate today) {
+        jdbc.update("update collection_schedule_rule set generated_through = ?", today.minusDays(1));
+        jdbc.update("delete from collection_event where collection_date >= ?", today);
+
+        CollectionScheduleRule organics = rules.findActive().stream()
+                .filter(rule -> rule.collectionType() == CollectionType.organic)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("the seed no longer has an organics rule"));
+        LocalDate closed = organics.occurrencesAfter(today, today.plusDays(30)).getFirst();
+
+        jdbc.update("insert into collection_holiday "
+                        + "(holiday_date, name_fr, name_en, name_zh, shift_days, sector, source_url) "
+                        + "values (?, ?, ?, ?, 1, 'all', 'test://holiday-shift')",
+                closed, "Jour test", "Test holiday", "测试假日");
+        return closed;
+    }
+
+    @Test
+    void aCollectionLandingOnAHolidayIsWrittenOnTheDayItActuallyHappens() {
+        LocalDate today = LocalDate.parse("2029-03-01");
+        LocalDate closed = closeTheNextOrganicsCollection(today);
+
+        topUpOn(today.toString()).topUp();
+
+        List<CollectionEvent> window = events.findUpcoming(Sector.all, closed, closed.plusDays(1));
+        assertThat(window)
+                .as("nothing is collected on the closed day")
+                .noneMatch(event -> event.collectionDate().equals(closed));
+        assertThat(window)
+                .as("and the collection it would have been appears the day after")
+                .anyMatch(event -> event.collectionDate().equals(closed.plusDays(1)));
+    }
+
+    @Test
+    void aMovedCollectionSaysWhyItMoved() {
+        LocalDate today = LocalDate.parse("2029-06-01");
+        LocalDate closed = closeTheNextOrganicsCollection(today);
+
+        topUpOn(today.toString()).topUp();
+
+        // A resident who sees an unfamiliar day is owed the reason, in their
+        // own language, rather than being left to assume the site is wrong.
+        assertThat(events.findUpcoming(Sector.all, closed.plusDays(1), closed.plusDays(1)))
+                .anySatisfy(event -> {
+                    assertThat(event.noteFr()).contains("Jour test");
+                    assertThat(event.noteEn()).contains("Test holiday");
+                    assertThat(event.noteZh()).contains("测试假日");
+                });
     }
 }

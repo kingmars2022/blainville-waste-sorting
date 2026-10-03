@@ -93,7 +93,7 @@ means garbage sitting at home for another week or two.
   pages still load normally instead of freezing.
 - **Handles busy moments.** With 200 simulated residents using the site at the same time,
   every request succeeded.
-- **Thoroughly tested.** 180 automated tests check that it behaves correctly, many of them
+- **Thoroughly tested.** 194 automated tests check that it behaves correctly, many of them
   against the same kind of setup it runs on in real life.
 
 ## About this project
