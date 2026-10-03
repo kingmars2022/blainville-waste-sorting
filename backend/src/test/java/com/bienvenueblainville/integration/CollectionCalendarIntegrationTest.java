@@ -6,6 +6,8 @@ import com.bienvenueblainville.collection.CollectionEventMapper;
 import com.bienvenueblainville.collection.CollectionHolidayMapper;
 import com.bienvenueblainville.collection.CollectionScheduleRule;
 import com.bienvenueblainville.collection.CollectionType;
+import org.assertj.core.api.Assertions;
+import org.assertj.core.groups.Tuple;
 import com.bienvenueblainville.collection.CollectionScheduleRuleMapper;
 import com.bienvenueblainville.common.Sector;
 import org.junit.jupiter.api.AfterEach;
@@ -217,6 +219,79 @@ class CollectionCalendarIntegrationTest {
                     assertThat(event.noteFr()).contains("Jour test");
                     assertThat(event.noteEn()).contains("Test holiday");
                     assertThat(event.noteZh()).contains("测试假日");
+                });
+    }
+
+    /**
+     * The generated calendar, checked line by line against the document it is
+     * supposed to reproduce.
+     *
+     * <p>The dates below are read off the Ville de Blainville "Calendrier des
+     * collectes residentielles 2026" - black bin, blue triangle, brown apple -
+     * for November 2026, a month chosen because it contains two full
+     * fortnights of both alternating collections. Before V15 this test failed
+     * on every single row: garbage was missing from the database entirely, and
+     * the recycling rules were anchored to the garbage fortnight.
+     *
+     * <p>It is the test the project did not have. Everything else about the
+     * calendar - that it does not run out, that it does not duplicate, that a
+     * cancellation stays cancelled - was true of a calendar printing the wrong
+     * bin.
+     */
+    @Test
+    void theGeneratedCalendarMatchesTheCityPrintedCalendar() {
+        LocalDate today = LocalDate.parse("2026-10-20");
+        jdbc.update("update collection_schedule_rule set generated_through = ?", today.minusDays(1));
+        jdbc.update("delete from collection_event where collection_date >= ?", today);
+
+        topUpOn(today.toString()).topUp();
+
+        LocalDate from = LocalDate.parse("2026-11-01");
+        LocalDate to = LocalDate.parse("2026-11-30");
+
+        // Tuesdays south of boulevard de la Seigneurie, plus the city-wide
+        // Thursday organics that findUpcoming folds in.
+        assertThat(events.findUpcoming(Sector.south, from, to))
+                .extracting(CollectionEvent::collectionDate, CollectionEvent::collectionType)
+                .containsExactlyInAnyOrder(
+                        Tuple.tuple(LocalDate.parse("2026-11-03"), CollectionType.recycling),
+                        Tuple.tuple(LocalDate.parse("2026-11-10"), CollectionType.garbage),
+                        Tuple.tuple(LocalDate.parse("2026-11-17"), CollectionType.recycling),
+                        Tuple.tuple(LocalDate.parse("2026-11-24"), CollectionType.garbage),
+                        Tuple.tuple(LocalDate.parse("2026-11-05"), CollectionType.organic),
+                        Tuple.tuple(LocalDate.parse("2026-11-12"), CollectionType.organic),
+                        Tuple.tuple(LocalDate.parse("2026-11-19"), CollectionType.organic),
+                        Tuple.tuple(LocalDate.parse("2026-11-26"), CollectionType.organic));
+
+        // Wednesdays north of it, one day behind the south throughout.
+        assertThat(events.findUpcoming(Sector.north, from, to))
+                .extracting(CollectionEvent::collectionDate, CollectionEvent::collectionType)
+                .containsExactlyInAnyOrder(
+                        Tuple.tuple(LocalDate.parse("2026-11-04"), CollectionType.recycling),
+                        Tuple.tuple(LocalDate.parse("2026-11-11"), CollectionType.garbage),
+                        Tuple.tuple(LocalDate.parse("2026-11-18"), CollectionType.recycling),
+                        Tuple.tuple(LocalDate.parse("2026-11-25"), CollectionType.garbage),
+                        Tuple.tuple(LocalDate.parse("2026-11-05"), CollectionType.organic),
+                        Tuple.tuple(LocalDate.parse("2026-11-12"), CollectionType.organic),
+                        Tuple.tuple(LocalDate.parse("2026-11-19"), CollectionType.organic),
+                        Tuple.tuple(LocalDate.parse("2026-11-26"), CollectionType.organic));
+    }
+
+    /**
+     * The one shift the 2026 calendar prints: an asterisk on 1 January reading
+     * "Collecte du 1er reportee au 2". New Year's Day 2026 is a Thursday, so
+     * it is the organics collection that moves.
+     */
+    @Test
+    void theOnlyHolidayTheCityPrintsIsTheOneInTheDatabase() {
+        assertThat(jdbc.queryForList(
+                "select holiday_date, shift_days, source_url from collection_holiday where active = true"))
+                .as("V14's guesses were removed by V15; only the cited one survives")
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.get("holiday_date").toString()).isEqualTo("2026-01-01");
+                    assertThat(((Number) row.get("shift_days")).intValue()).isEqualTo(1);
+                    assertThat(row.get("source_url")).asString().contains("blainville.ca");
                 });
     }
 }

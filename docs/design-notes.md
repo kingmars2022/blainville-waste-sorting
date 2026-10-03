@@ -972,8 +972,9 @@ Completed:
 - Admin CRUD for collection schedules, sorting items (with required French/English/Chinese translations, locations, and keywords), and special notices, wired end to end from the admin UI through MyBatis to `collection_event`, `sorting_item`/`sorting_item_translation`/`sorting_item_keyword`, and `special_notice`.
 - `HomeView` calls `GET /api/collections/upcoming` for the signed-in resident's sector and shows the real next collection (today/tomorrow framing, put-out/bring-back guidance) plus a short list of upcoming collections, instead of static sample data.
 - MyBatis mapper foundation and a normalized 7-table MySQL schema.
-- Flyway migrations for schema and seed data (`V1`-`V12`).
-- A collection calendar that extends itself. The recurring patterns live in `collection_schedule_rule` and are materialized out to a rolling 180-day horizon on startup and daily, so the calendar cannot quietly run out the way the hand-written `V6` rows were going to on 2026-10-30. Generation never crosses a rule's high-water mark, so an administrator's cancellation is not undone overnight.
+- Flyway migrations for schema and seed data (`V1`-`V15`).
+- A collection calendar that extends itself, from the city's own patterns. The five recurring rules in `collection_schedule_rule` - garbage and recycling alternating on Tuesdays in the south and Wednesdays in the north, organics every Thursday city-wide - are read off the official 2026 calendar in `V15`, and are materialized out to a rolling 180-day horizon on startup and daily, so the calendar cannot quietly run out the way the hand-written `V6` rows were going to on 2026-10-30. Generation never crosses a rule's high-water mark, so an administrator's cancellation is not undone overnight, and `HolidayShift` moves an occurrence off a day the city is closed rather than cancelling it.
+- `V15` is also where a quiet wrong answer was found. Until it, the database had no household-waste rule at all and anchored recycling to the garbage fortnight, so a resident in the south was shown the blue bin on 10 and 24 November - black-bin days on the city's calendar - and shown nothing on the 3rd and 17th, when recycling actually goes out. Every other property of the calendar was already tested and already true; they were true of a calendar naming the wrong bin.
 - The sorting guide served from MySQL to residents, the assistant, the photo lookup and the admin console alike (`GET /api/sorting-items`). It previously existed twice - a TypeScript file for the resident cards and the database for everything else - so an admin edit changed one and not the other. Migrations V10/V11 carried the two fields only the static copy had (`examples`, seasonal `availability`) and merged a duplicate entry.
 - Seasonal and special collection reminder data.
 - Location and address support for special sorting records.
@@ -989,7 +990,7 @@ Completed:
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- 194 tests: 87 that need nothing but the JVM, 83 that run against real infrastructure, and 24 in the browser runtime.
+- 196 tests: 87 that need nothing but the JVM, 85 that run against real infrastructure, and 24 in the browser runtime.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -1099,7 +1100,7 @@ This project is not an official municipal website.
 Current limitations:
 
 - The sorting data is an initial structured seed, not a complete official import. It is served from the `sorting_item` tables to residents, the assistant, the photo lookup and the admin console alike - the static frontend copy was removed in `V10`/`V11`.
-- The collection patterns in `collection_schedule_rule` are an illustrative weekly/biweekly schedule, not the official municipal calendar, and the same is true of `collection_holiday`: `V14` seeds the four fixed-date Quebec statutory holidays with a one-day shift and a null `source_url`, which is the column that says nobody has checked them against the city's own calendar. Quebec's four moving statutory holidays are deliberately absent rather than computed. The mechanism that shifts a collection off a closed day is real and tested; which days Blainville actually closes is data this repository does not have.
+- The collection patterns and the one holiday shift come from the city's official 2026 calendar, which is the only year that document covers. The patterns recur, so the calendar keeps generating past 2026 - but whether Blainville moves a weekday, or shifts a statutory holiday that lands on a collection day, in a year this repository has never seen is not something it can know. `V14`'s guesses about 2027 were deleted by `V15` precisely because the 2026 document contradicted one of them: Canada Day falls on a Wednesday in 2026 and is collected normally.
 - Three things are implemented but have never run against the real service: live Anthropic API calls, the Lambda on AWS, and the API Gateway deployment. Everything about them was verified against local equivalents (a real S3 API, a real Kafka broker, a real MongoDB wire protocol), and that difference is recorded in `verification/photo-pipeline-results.md` rather than glossed over. The deployment jar itself is now loaded and run from a bare classpath, which is the part of "never run on AWS" that could be checked here - it caught a missing HTTP client dependency that would have failed at cold start.
 - Push notifications are not implemented.
 - The deployment is a free-tier one, with the trade-offs that implies: the container sleeps after 15 minutes of inactivity, so the first request after a quiet spell pays a cold start, and Redis, Kafka, MongoDB and the photo pipeline are all switched off there (`CACHE_TYPE=none`, `EVENTS_ENABLED=false`, `AUDIT_STORE=mysql`, `ASSISTANT_PROVIDER=template`). What is deployed exercises the MySQL path, the sorting guide, the schedule, the notices, the admin console and the retrieval assistant's template provider - not the event pipeline, which remains verified locally against real brokers.
@@ -1114,7 +1115,7 @@ Medium-term:
 
 - Complete the Blainville sorting guide dataset.
 - Import full yearly collection calendars.
-- Import the official municipal collection calendar and the holidays that go with it, replacing the illustrative patterns in `collection_schedule_rule` and `collection_holiday`.
+- Import the 2027 calendar when the city publishes it, and check the 2026 patterns still hold.
 - Add holiday and service-delay notices.
 - Improve admin validation for missing translations.
 - Add PWA support for installation on mobile devices.
@@ -1141,7 +1142,7 @@ Long-term:
 - A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
 - A recurring calendar that extends itself without ever undoing an administrator's cancellation.
 - Photo uploads that never pass through the application, with EXIF stripped before anything is served.
-- 194 tests, of which 83 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
+- 196 tests, of which 85 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 
