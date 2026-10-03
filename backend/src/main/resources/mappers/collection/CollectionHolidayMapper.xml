@@ -9,4 +9,49 @@
           and holiday_date &gt;= #{from}
         order by holiday_date asc
     </select>
+
+    <select id="findAll" resultType="com.bienvenueblainville.collection.CollectionHoliday">
+        select id, holiday_date, name_fr, name_en, name_zh, shift_days, sector, source_url, active
+        from collection_holiday
+        order by holiday_date asc
+    </select>
+
+    <select id="findById" resultType="com.bienvenueblainville.collection.CollectionHoliday">
+        select id, holiday_date, name_fr, name_en, name_zh, shift_days, sector, source_url, active
+        from collection_holiday
+        where id = #{id}
+    </select>
+
+    <insert id="insert">
+        insert into collection_holiday
+            (holiday_date, name_fr, name_en, name_zh, shift_days, sector, source_url, active)
+        values
+            (#{holidayDate}, #{nameFr}, #{nameEn}, #{nameZh}, #{shiftDays}, #{sector}, #{sourceUrl}, #{active})
+    </insert>
+
+    <!-- CollectionHoliday is a record, so MyBatis cannot write a generated key
+         back into it. The unique key on (holiday_date, sector) from V14 answers
+         the same question without giving the type a setter it should not have. -->
+    <select id="findByDateAndSector" resultType="com.bienvenueblainville.collection.CollectionHoliday">
+        select id, holiday_date, name_fr, name_en, name_zh, shift_days, sector, source_url, active
+        from collection_holiday
+        where holiday_date = #{holidayDate} and sector = #{sector}
+    </select>
+
+    <update id="update">
+        update collection_holiday
+        set holiday_date = #{holidayDate},
+            name_fr = #{nameFr},
+            name_en = #{nameEn},
+            name_zh = #{nameZh},
+            shift_days = #{shiftDays},
+            sector = #{sector},
+            source_url = #{sourceUrl},
+            active = #{active}
+        where id = #{id}
+    </update>
+
+    <delete id="delete">
+        delete from collection_holiday where id = #{id}
+    </delete>
 </mapper>

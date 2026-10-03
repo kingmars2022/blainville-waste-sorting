@@ -11,6 +11,9 @@ import java.util.Optional;
 
 @Mapper
 public interface CollectionEventMapper {
+    /** Removes generated occurrences from {@code from} onward, leaving hand-entered ones. */
+    void deleteGeneratedFrom(@Param("from") LocalDate from);
+
     List<CollectionEvent> findUpcoming(
             @Param("sector") Sector sector,
             @Param("startDate") LocalDate startDate,

@@ -16,4 +16,10 @@
         where id = #{id}
           and generated_through &lt; #{generatedThrough}
     </update>
+
+    <update id="rewindGeneratedThrough">
+        update collection_schedule_rule
+        set generated_through = #{generatedThrough}
+        where generated_through &gt; #{generatedThrough}
+    </update>
 </mapper>

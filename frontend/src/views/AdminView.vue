@@ -159,6 +159,118 @@ const summaryCards = computed(() => [
   { key: "notices" as const, value: notices.value.length }
 ]);
 
+// --- Collection holidays ------------------------------------------------
+//
+// The days the city does not collect. Saving one rebuilds the generated
+// calendar on the server, so the schedule panel above can change as a result
+// of an edit here - which is why both lists are reloaded after a save.
+
+interface Holiday {
+  id: number;
+  holidayDate: string;
+  nameFr: string;
+  nameEn: string;
+  nameZh: string;
+  shiftDays: number;
+  sector: string;
+  sourceUrl: string | null;
+  active: boolean;
+}
+
+const holidays = ref<Holiday[]>([]);
+const holidayError = ref("");
+
+const emptyHolidayDraft = {
+  holidayDate: "",
+  nameFr: "",
+  nameEn: "",
+  nameZh: "",
+  shiftDays: 1,
+  sector: "all",
+  sourceUrl: "",
+  active: true
+};
+
+const holidayDraft = reactive({ ...emptyHolidayDraft });
+const editingHolidayId = ref<number | null>(null);
+
+async function loadHolidays() {
+  try {
+    holidays.value = await api.get<Holiday[]>("/admin/collection-holidays");
+    holidayError.value = "";
+  } catch (err) {
+    holidayError.value = err instanceof Error ? err.message : "Failed to load holidays";
+  }
+}
+
+async function saveHoliday() {
+  const payload = {
+    holidayDate: holidayDraft.holidayDate,
+    nameFr: holidayDraft.nameFr,
+    nameEn: holidayDraft.nameEn,
+    nameZh: holidayDraft.nameZh,
+    shiftDays: Number(holidayDraft.shiftDays),
+    sector: holidayDraft.sector,
+    sourceUrl: holidayDraft.sourceUrl || null,
+    active: holidayDraft.active
+  };
+
+  try {
+    if (editingHolidayId.value === null) {
+      await api.post<Holiday>("/admin/collection-holidays", payload);
+    } else {
+      await api.put<Holiday>(`/admin/collection-holidays/${editingHolidayId.value}`, payload);
+    }
+    holidayError.value = "";
+  } catch (err) {
+    holidayError.value = err instanceof Error ? err.message : "Failed to save holiday";
+    return;
+  }
+
+  cancelHolidayEdit();
+  await loadHolidays();
+  // The server moved collections off the closed day; the schedule shown above
+  // is now stale.
+  await loadEvents();
+}
+
+function startHolidayEdit(holiday: Holiday) {
+  editingHolidayId.value = holiday.id;
+  Object.assign(holidayDraft, {
+    holidayDate: holiday.holidayDate,
+    nameFr: holiday.nameFr,
+    nameEn: holiday.nameEn,
+    nameZh: holiday.nameZh,
+    shiftDays: holiday.shiftDays,
+    sector: holiday.sector,
+    sourceUrl: holiday.sourceUrl ?? "",
+    active: holiday.active
+  });
+}
+
+function cancelHolidayEdit() {
+  editingHolidayId.value = null;
+  Object.assign(holidayDraft, emptyHolidayDraft);
+}
+
+async function deleteHoliday(id: number) {
+  await api.delete(`/admin/collection-holidays/${id}`);
+  await loadHolidays();
+  await loadEvents();
+}
+
+function sectorLabel(sector: string) {
+  return {
+    all: t("admin.sectorAll"),
+    north: t("admin.sectorNorth"),
+    south: t("admin.sectorSouth")
+  }[sector] ?? sector;
+}
+
+function holidayName(holiday: Holiday) {
+  return { fr: holiday.nameFr, en: holiday.nameEn, zh: holiday.nameZh }[language.value];
+}
+
 // --- Notices -----------------------------------------------------------
 
 const emptyNoticeDraft = {
@@ -480,6 +592,7 @@ function sortingName(item: SortingItem) {
 
 onMounted(() => {
   loadNotices();
+  loadHolidays();
   loadEvents();
   loadSortingItems();
 });
@@ -930,6 +1043,91 @@ onMounted(() => {
           </tbody>
         </table>
         <p v-else class="admin-note">{{ t("admin.noNotices") }}</p>
+      </section>
+
+      <section class="admin-panel">
+        <div class="admin-panel-title">
+          <h2>{{ t("admin.holidays") }}</h2>
+        </div>
+
+        <p class="admin-note">{{ t("admin.holidaysHint") }}</p>
+        <p v-if="holidayError" class="auth-error">{{ holidayError }}</p>
+
+        <p v-if="editingHolidayId !== null" class="admin-note">
+          {{ t("admin.editing") }} #{{ editingHolidayId }}
+        </p>
+
+        <form class="admin-form-grid" @submit.prevent="saveHoliday">
+          <label>
+            {{ t("admin.holidayDate") }}
+            <input v-model="holidayDraft.holidayDate" type="date" required />
+          </label>
+          <label>
+            {{ t("admin.shiftDays") }}
+            <input v-model="holidayDraft.shiftDays" type="number" min="1" max="7" required />
+          </label>
+          <label>
+            {{ t("admin.sector") }}
+            <select v-model="holidayDraft.sector">
+              <option value="all">{{ t("admin.sectorAll") }}</option>
+              <option value="north">{{ t("admin.sectorNorth") }}</option>
+              <option value="south">{{ t("admin.sectorSouth") }}</option>
+            </select>
+          </label>
+          <label>
+            {{ t("admin.nameFr") }}
+            <input v-model="holidayDraft.nameFr" type="text" required />
+          </label>
+          <label>
+            {{ t("admin.nameEn") }}
+            <input v-model="holidayDraft.nameEn" type="text" required />
+          </label>
+          <label>
+            {{ t("admin.nameZh") }}
+            <input v-model="holidayDraft.nameZh" type="text" required />
+          </label>
+          <label>
+            {{ t("admin.sourceUrl") }}
+            <input v-model="holidayDraft.sourceUrl" type="url" />
+          </label>
+          <label class="admin-checkbox">
+            <input v-model="holidayDraft.active" type="checkbox" />
+            {{ t("admin.active") }}
+          </label>
+          <div class="admin-form-actions">
+            <button type="submit">
+              {{ editingHolidayId === null ? t("admin.addHoliday") : t("admin.save") }}
+            </button>
+            <button v-if="editingHolidayId !== null" type="button" @click="cancelHolidayEdit">
+              {{ t("admin.cancel") }}
+            </button>
+          </div>
+        </form>
+
+        <table class="admin-table" v-if="holidays.length">
+          <thead>
+            <tr>
+              <th>{{ t("admin.holidayDate") }}</th>
+              <th>{{ t("admin.holidayName") }}</th>
+              <th>{{ t("admin.shiftDays") }}</th>
+              <th>{{ t("admin.sector") }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="holiday in holidays" :key="holiday.id">
+              <td>{{ holiday.holidayDate }}</td>
+              <td>{{ holidayName(holiday) }}</td>
+              <td>{{ holiday.shiftDays }}</td>
+              <td>{{ sectorLabel(holiday.sector) }}</td>
+              <td class="admin-row-actions">
+                <button type="button" @click="startHolidayEdit(holiday)">{{ t("admin.edit") }}</button>
+                <button type="button" @click="deleteHoliday(holiday.id)">{{ t("admin.delete") }}</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="admin-note">{{ t("admin.noHolidays") }}</p>
       </section>
     </div>
   </section>

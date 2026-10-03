@@ -628,6 +628,16 @@ collection_schedule_rule
   Stores the recurring collection patterns - anchor date, interval, and the
   high-water mark of what has already been materialized into collection_event.
 
+collection_holiday
+  Stores the days the city does not collect and how far a collection landing
+  on one moves. A table rather than hand-edited collection_event rows because
+  rows would work exactly once: the calendar materializes forward for ever,
+  so next year's exception would need a person to remember again. A null
+  source_url means nobody has checked the row against the city's calendar.
+  Administered from the console through /api/admin/collection-holidays, which
+  rebuilds the affected part of the calendar on every write - saving a row
+  without moving the collections it closes would be a screen that lies.
+
 special_notice
   Stores temporary announcements such as holiday changes, service delays, or seasonal notices.
 
@@ -971,8 +981,8 @@ Completed:
 - User preference persistence in MySQL (`GET/PUT /api/preferences`), synced with the frontend Pinia store for signed-in users.
 - Admin CRUD for collection schedules, sorting items (with required French/English/Chinese translations, locations, and keywords), and special notices, wired end to end from the admin UI through MyBatis to `collection_event`, `sorting_item`/`sorting_item_translation`/`sorting_item_keyword`, and `special_notice`.
 - `HomeView` calls `GET /api/collections/upcoming` for the signed-in resident's sector and shows the real next collection (today/tomorrow framing, put-out/bring-back guidance) plus a short list of upcoming collections, instead of static sample data.
-- MyBatis mapper foundation and a normalized 7-table MySQL schema.
-- Flyway migrations for schema and seed data (`V1`-`V15`).
+- MyBatis mapper foundation and a normalized 13-table MySQL schema, where `collection_event.auto_generated` records which rows the calendar produced so a rebuild can leave an administrator's own entries alone.
+- Flyway migrations for schema and seed data (`V1`-`V16`).
 - A collection calendar that extends itself, from the city's own patterns. The five recurring rules in `collection_schedule_rule` - garbage and recycling alternating on Tuesdays in the south and Wednesdays in the north, organics every Thursday city-wide - are read off the official 2026 calendar in `V15`, and are materialized out to a rolling 180-day horizon on startup and daily, so the calendar cannot quietly run out the way the hand-written `V6` rows were going to on 2026-10-30. Generation never crosses a rule's high-water mark, so an administrator's cancellation is not undone overnight, and `HolidayShift` moves an occurrence off a day the city is closed rather than cancelling it.
 - `V15` is also where a quiet wrong answer was found. Until it, the database had no household-waste rule at all and anchored recycling to the garbage fortnight, so a resident in the south was shown the blue bin on 10 and 24 November - black-bin days on the city's calendar - and shown nothing on the 3rd and 17th, when recycling actually goes out. Every other property of the calendar was already tested and already true; they were true of a calendar naming the wrong bin.
 - The sorting guide served from MySQL to residents, the assistant, the photo lookup and the admin console alike (`GET /api/sorting-items`). It previously existed twice - a TypeScript file for the resident cards and the database for everything else - so an admin edit changed one and not the other. Migrations V10/V11 carried the two fields only the static copy had (`examples`, seasonal `availability`) and merged a duplicate entry.
@@ -990,7 +1000,7 @@ Completed:
 - Docker Compose setup for MySQL, Redis, and backend.
 - Backend Dockerfile.
 - Environment-variable-based configuration (database, JWT secret, seeded admin credentials).
-- 196 tests: 87 that need nothing but the JVM, 85 that run against real infrastructure, and 24 in the browser runtime.
+- 208 tests: 87 that need nothing but the JVM, 92 that run against real infrastructure, and 29 in the browser runtime.
 - Successful backend Maven build.
 - Successful frontend Vite production build (including `vue-tsc` type-checking).
 - `docker compose --env-file .env.example config` validates the Compose file.
@@ -1115,7 +1125,7 @@ Medium-term:
 
 - Complete the Blainville sorting guide dataset.
 - Import full yearly collection calendars.
-- Import the 2027 calendar when the city publishes it, and check the 2026 patterns still hold.
+- Import the 2027 calendar when the city publishes it, and check the 2026 patterns still hold. The closed days themselves no longer need a migration: an administrator enters them in the console.
 - Add holiday and service-delay notices.
 - Improve admin validation for missing translations.
 - Add PWA support for installation on mobile devices.
@@ -1142,7 +1152,7 @@ Long-term:
 - A transactional outbox so a publish is never half-done, with idempotent consumers on the other side.
 - A recurring calendar that extends itself without ever undoing an administrator's cancellation.
 - Photo uploads that never pass through the application, with EXIF stripped before anything is served.
-- 196 tests, of which 85 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
+- 208 tests, of which 92 run against real infrastructure rather than mocks - which is how most of the bugs in the history of this repository were found.
 
 ## Project Positioning
 

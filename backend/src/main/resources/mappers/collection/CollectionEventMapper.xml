@@ -14,6 +14,17 @@
         order by collection_date asc, collection_type asc
     </select>
 
+    <!--
+      Deletes only rows generation produced. An administrator's own entry is
+      not the application's to remove, and the calendar before `from` is
+      history nobody rebuilds.
+    -->
+    <delete id="deleteGeneratedFrom">
+        delete from collection_event
+        where auto_generated = true
+          and collection_date &gt;= #{from}
+    </delete>
+
     <select id="findAll" resultType="com.bienvenueblainville.collection.CollectionEvent">
         select <include refid="columns"/>
         from collection_event
@@ -62,11 +73,11 @@
     </insert>
 
     <insert id="insertGenerated">
-        insert into collection_event (collection_date, sector, collection_type, bin_color, note_fr, note_en, note_zh, source_url)
+        insert into collection_event (collection_date, sector, collection_type, bin_color, note_fr, note_en, note_zh, source_url, auto_generated)
         values
         <foreach collection="events" item="event" separator=",">
             (#{event.collectionDate}, #{event.sector}, #{event.collectionType}, #{event.binColor},
-             #{event.noteFr}, #{event.noteEn}, #{event.noteZh}, #{event.sourceUrl})
+             #{event.noteFr}, #{event.noteEn}, #{event.noteZh}, #{event.sourceUrl}, true)
         </foreach>
         <!-- Repeatable by design: see the unique key added in V12. -->
         on duplicate key update collection_event.id = collection_event.id
