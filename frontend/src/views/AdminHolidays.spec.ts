@@ -38,6 +38,17 @@ vi.mock("../api/agent", () => ({
  * schedule table above it showing collections on a day the city is shut, and
  * the administrator would have no reason to suspect it.
  */
+/** The holidays panel is the last of its kind on the page. `at(-1)` would say
+ *  this more directly, but it is newer than the lib target this project
+ *  compiles against, and a test is not a reason to move a build target. */
+function lastOf<T>(items: T[]): T {
+  const item = items[items.length - 1];
+  if (item === undefined) {
+    throw new Error("expected at least one element");
+  }
+  return item;
+}
+
 describe("AdminView holidays", () => {
   const holiday = {
     id: 3,
@@ -86,7 +97,7 @@ describe("AdminView holidays", () => {
   it("sends every language, because a moved collection explains itself in all three", async () => {
     const wrapper = await mountAdmin();
 
-    const form = wrapper.findAll("form").at(-1)!;
+    const form = lastOf(wrapper.findAll("form"));
     const inputs = form.findAll("input");
     await inputs[0].setValue("2027-07-01");
     const [fr, en, zh] = form.findAll('input[type="text"]');
@@ -113,7 +124,7 @@ describe("AdminView holidays", () => {
     const wrapper = await mountAdmin();
     get.mockClear();
 
-    const form = wrapper.findAll("form").at(-1)!;
+    const form = lastOf(wrapper.findAll("form"));
     await form.findAll("input")[0].setValue("2027-07-01");
     const [fr, en, zh] = form.findAll('input[type="text"]');
     await fr.setValue("a");
@@ -131,10 +142,9 @@ describe("AdminView holidays", () => {
     const wrapper = await mountAdmin();
     get.mockClear();
 
-    const deleteButton = wrapper
-      .findAll("button")
-      .filter((button) => button.text() === "Supprimer")
-      .at(-1)!;
+    const deleteButton = lastOf(
+      wrapper.findAll("button").filter((button) => button.text() === "Supprimer")
+    );
     await deleteButton.trigger("click");
     await flushPromises();
 
@@ -147,7 +157,7 @@ describe("AdminView holidays", () => {
     const wrapper = await mountAdmin();
     post.mockRejectedValueOnce(new Error("shiftDays must be between 1 and 7"));
 
-    const form = wrapper.findAll("form").at(-1)!;
+    const form = lastOf(wrapper.findAll("form"));
     await form.findAll("input")[0].setValue("2027-07-01");
     const [fr, en, zh] = form.findAll('input[type="text"]');
     await fr.setValue("a");
