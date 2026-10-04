@@ -69,19 +69,45 @@ this document recommended first — was acquired by Mistral in February 2026 and
 create. Neither is a criticism of either platform; free tiers move, and a
 checklist written once is wrong within a year.
 
-Two consequences worth deciding up front, and they are the same consequence:
+Two consequences worth deciding up front, and they are **not** the same
+consequence. One is slow; the other is down.
 
+- **Render sleeps a free service after 15 minutes.** Waking it takes 30–60
+  seconds before the JVM has even started. The link still works — it is just
+  slow the first time.
 - **Aiven powers off a free MySQL that sits idle**, with a warning email
-  first.
-- **Render sleeps a free service after 15 minutes**, and waking it takes
-  30–60 seconds before the JVM has even started.
+  first, and a powered-off service is not merely asleep. Its DNS record stops
+  resolving. This has happened to this deployment, and it is worth recording
+  what it looks like, because nothing in the symptom points at the database:
 
-So a link nobody has opened for a week is slow the first time, in two places
-at once. For a portfolio that means one habit: **open it yourself a couple of
-minutes before an interview.** Hugging Face Spaces is the alternative
-precisely because 48 hours of grace makes that habit unnecessary; the cost is
-a `*.hf.space` URL, which reads as a machine-learning demo rather than a
-municipal service.
+  ```
+  java.net.UnknownHostException:
+      mysql-3f7959fc-blainville-waste-sorting.e.aivencloud.com
+  ```
+
+  Flyway runs at startup, so the failure is a boot failure: Spring never
+  finishes starting, Render restarts the container, it fails again, and the
+  site returns a Render error page rather than anything the app produced. The
+  host is unreachable, not the app — but the app is what looks broken.
+
+The fix is to power the service back on from the Aiven console and wait for
+the node to report Running. **Host, port, user and database name survive a
+power-off**, so no Render environment variable needs editing; only the data
+inside is at risk, and only after 180 days powered off, when Aiven deletes
+the service. Even that is recoverable here, because the entire schema and
+every row of reference data — the calendar, the sorting guide, the holidays —
+live in the Flyway migrations under `db/migration`, not in a backup nobody
+took. A new empty service with the same credentials comes back fully
+populated on first boot. That is the practical payoff of keeping seed data in
+migrations instead of loading it by hand once.
+
+For a portfolio, then, one habit: **open the site yourself a couple of
+minutes before an interview** — early enough that a powered-off database is
+something you discover rather than something the interviewer does. Hugging
+Face Spaces is the alternative for the app tier precisely because 48 hours of
+grace makes the habit less critical; the cost is a `*.hf.space` URL, which
+reads as a machine-learning demo rather than a municipal service. It does
+nothing about the database, which is the half that fails hard.
 
 Keeping a free service permanently awake with a scheduled pinger is possible
 and is what a lot of people do. It is also exactly what the idle policy exists
@@ -163,6 +189,15 @@ because a 512 MB box is small and the JVM's default sizing assumes it is not.
 is public, returns 200, and touches MySQL, so it is a real readiness check
 rather than a liveness fiction.
 
+**Auto-deploy.** Turn it on — **Settings → Auto-Deploy → On Commit**. Render
+does not enable it for every service, and a service with it off is the
+quietest possible failure: pushes succeed, CI goes green, the repository looks
+current, and the running site stays on whatever commit was deployed first.
+This deployment sat eight commits behind for two weeks without a single
+error anywhere, which is how long it took to notice. If you leave it off,
+treat **Manual Deploy → Deploy latest commit** as part of pushing, not as a
+thing you do when something looks wrong.
+
 Environment variables:
 
 ```
@@ -204,6 +239,12 @@ curl -s -o /dev/null -w "%{http_code}\n" https://your-app/tri     # 200, history
 ```
 
 Then open the site, switch the language, and sign in with the admin account.
+
+Check the commit, too, not just the status code. Render's dashboard shows the
+deployed commit next to each deploy; compare it with `git rev-parse --short
+HEAD`. A green deploy of the wrong commit serves a working site that is simply
+out of date — here that meant a calendar printing the wrong bin for November,
+which no health check can detect.
 
 ## What to say about it
 
