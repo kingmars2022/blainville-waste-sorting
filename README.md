@@ -39,13 +39,19 @@ means garbage sitting at home for another week or two.
    shows which bin goes out next, when to put it out (after 8 p.m. the night before) and when
    to bring it back.
 2. **Look up any item.** Type "pizza box", "battery" or "old sofa" and get the right bin or
-   drop-off location, with instructions.
+   drop-off location, with instructions. The guide holds all 35 categories the city prints,
+   including the ones where the obvious guess is wrong — "compostable" utensils go in the
+   garbage, not the brown bin.
 3. **Ask in your own words.** Not sure what an item is called? Ask a question like "Where
    does a dirty pizza box go?" The answer shows which part of
    the city's guide it came from, so you can check it.
 4. **Take a photo.** If you don't know what to call something, photograph it. The site works
    out what it is, then looks it up in the city's guide.
 5. **Get notices.** Holiday delays and special pickups show up on your home page.
+6. **Be reminded on your phone, if you want to be.** You can turn on browser notifications
+   for the same notices. It is off unless you ask for it, and the home page remains the
+   record — a notification is a second delivery, so a blocked or expired one costs you a
+   buzz, not the notice itself.
 
 <p>
 <img src="docs/verification/screenshots/10-assistant-fr.png" width="290" alt="Assistant answering a question about a dirty pizza box" />
@@ -56,11 +62,14 @@ means garbage sitting at home for another week or two.
 
 1. **Keep everything current from one place.** Update the collection calendar, add or fix
    sorting rules, and publish notices, without a developer.
-2. **Describe a change in one sentence.** For example: "Thursday's compost pickup is moved
+2. **Record a holiday once.** Statutory holidays push collections back by a day or more.
+   Staff enter the date and the shift, and every affected pickup moves — including the ones
+   already published months ahead — instead of being edited one by one.
+3. **Describe a change in one sentence.** For example: "Thursday's compost pickup is moved
    to Friday, tell residents." The AI assistant prepares the calendar change and a notice,
    then waits. Nothing changes until a staff member reviews it and clicks
    approve.
-3. **See what residents are asking that the guide doesn't cover.** For example, if many
+4. **See what residents are asking that the guide doesn't cover.** For example, if many
    people asked about aquariums last month, staff know what to add next.
 
 <p>
@@ -79,13 +88,21 @@ means garbage sitting at home for another week or two.
 - **The AI can't change anything by itself.** Staff always see exactly what will change and
   approve it first. One schedule mistake could send a whole neighbourhood out with the wrong
   bin.
+- **The schedule is checked against the city's own calendar, not against itself.** Every
+  test passed for weeks on a calendar that printed the wrong bin, because no test compared
+  it to the document it was meant to reproduce. Comparing them found that two collection
+  patterns had been labelled recycling when the city prints household waste. The rules now
+  carry the page they came from, and a test reads that document rather than the database.
 - **Photos are cleaned before they are stored.** Phone photos contain the GPS location where
   they were taken, often the resident's own home. That location is removed.
 
 ## What it achieves
 
-- **Accurate answers.** In testing, the assistant answered all 12 questions the city's guide
-  covers correctly, and declined all 6 questions it doesn't cover instead of guessing.
+- **Accurate answers.** In testing, the assistant answered all 19 questions the city's guide
+  covers correctly, and declined all 6 questions it doesn't cover instead of guessing. The
+  harder questions were added deliberately, and they found a real bug: a question about
+  chicken bones worked in English and failed in French. Nobody would have noticed it by
+  testing in one language.
 - **No double changes.** In an early test, two staff members approved the same change at
   the same moment, and it was applied twice. That is fixed: each approved change is applied
   exactly once.

@@ -1,4 +1,4 @@
-# Grounded Sorting Assistant — Measurements — 2026-09-19
+# Grounded Sorting Assistant — Measurements — 2026-09-19, re-measured 2026-10-04
 
 A resident types "où va une boîte à pizza sale ?" and gets the right bin, in
 their own language. The answer comes from the municipal sorting guide in
@@ -12,8 +12,27 @@ the seeded guide, the real full-text indexes from migration V7, real Redis.
 
 | Metric | Result |
 |---|---:|
-| Retrieval precision @1 (12 answerable questions, fr/en/zh) | **12 / 12** |
+| Retrieval precision @1 (19 answerable questions, fr/en/zh) | **19 / 19** |
 | Refusal accuracy (6 questions the guide cannot answer) | **6 / 6** |
+
+The answerable set grew from 12 to 19 when `V17` replaced the sample guide
+with the city's own list, and the seven added questions were deliberately not
+easy ones. A resident who already knows the answer does not look it up, so the
+cases worth testing are the ones where the obvious guess is wrong:
+"compostable" utensils are garbage rather than compost, chicken bones are
+organic, and a broken mirror is a bulky pickup rather than any bin.
+
+**That expansion immediately found a real defect**, which is the argument for
+writing the hard cases rather than the ones you expect to pass. `Où jeter les
+os de poulet ?` refused, while `Where do chicken bones go?` answered
+correctly — a failure in one language only, which no amount of English testing
+would have surfaced. The cause is not in the application: `os` is two
+characters, and InnoDB's `innodb_ft_min_token_size` defaults to 3, so the word
+never enters the full-text index at all. Lowering that setting would mean a
+server-level change that a hosted free tier does not grant and that would
+bloat the index for one word. The fix was to give the entry the keywords a
+French speaker would actually type — `poulet`, `volaille`, `ossements` — which
+is a content fix for a content problem.
 
 Refusal accuracy is the one that decides whether this is safe to ship. Telling
 a resident to put paint in the blue bin is a real-world error with a
@@ -186,9 +205,13 @@ real Chromium against the real frontend and backend.
 ## Tests
 
 ```text
-mvn test                    30/30 passing (unit, no infrastructure)
-mvn test -Pintegration-test 49/49 passing (30 unit + 19 integration, real MySQL + Redis)
+mvn test                    112 passing (unit, no infrastructure)
+mvn test -Pintegration-test 213 passing (112 unit + 101 integration, real MySQL + Redis)
 ```
+
+(Repository-wide the figure is 248, the remaining 35 being frontend tests in
+the browser runtime. The counts above were 30 and 49 when this document was
+first written; the suite has grown with the features since.)
 
 `AssistantIntegrationTest` pins the properties that must not regress silently:
 a grounded answer in each of the three languages, the two false positives
