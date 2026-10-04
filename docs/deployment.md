@@ -7,6 +7,13 @@ without a credit card and without a bill.
 in September 2026 and the result is live at
 <https://blainville-waste-sorting.onrender.com/>: the pages load, the API
 answers, and Flyway migrated the seed into a real hosted MySQL on first boot.
+It was redeployed in October 2026 at `03265c4`, which is when Flyway applied
+`V14`–`V18` against that hosted database — the first upgrade this deployment
+had taken rather than a first boot. Both halves were checked on the live site
+afterwards: the sorting guide serves 35 entries rather than 14, and the
+October calendar shows the recycling collection on Wednesday 21 October that
+the pre-`V15` data did not generate at all.
+
 The optional services are the part that has *not* been deployed — Redis,
 Kafka, MongoDB and the S3 photo pipeline are switched off there, and they
 stay verified against local real equivalents rather than hosted ones.
