@@ -48,10 +48,9 @@ means garbage sitting at home for another week or two.
 4. **Take a photo.** If you don't know what to call something, photograph it. The site works
    out what it is, then looks it up in the city's guide.
 5. **Get notices.** Holiday delays and special pickups show up on your home page.
-6. **Be reminded on your phone, if you want to be.** You can turn on browser notifications
-   for the same notices. It is off unless you ask for it, and the home page remains the
-   record — a notification is a second delivery, so a blocked or expired one costs you a
-   buzz, not the notice itself.
+6. **Be reminded on your phone.** You can turn on browser notifications for the same
+   notices. It is off unless you ask for it, and the notices stay on your home page either
+   way, so a blocked notification costs you a buzz rather than the notice.
 
 <p>
 <img src="docs/verification/screenshots/10-assistant-fr.png" width="290" alt="Assistant answering a question about a dirty pizza box" />
@@ -79,39 +78,31 @@ means garbage sitting at home for another week or two.
 
 ## Why it works this way
 
-- **The assistant never guesses.** A wrong answer about garbage is worse than no answer,
-  because the resident trusts it and puts the item in the wrong bin. So the assistant answers
-  only from the city's own guide. If the guide doesn't cover a question, it tells the
-  resident to check the city's website, instead of making something up.
-- **For photos, the AI only names the object. The city's guide decides the bin.** A general
-  AI would answer from recycling rules in general, and Blainville's rules are not general.
-- **The AI can't change anything by itself.** Staff always see exactly what will change and
-  approve it first. One schedule mistake could send a whole neighbourhood out with the wrong
-  bin.
-- **The schedule is checked against the city's own calendar, not against itself.** Every
-  test passed for weeks on a calendar that printed the wrong bin, because no test compared
-  it to the document it was meant to reproduce. Comparing them found that two collection
-  patterns had been labelled recycling when the city prints household waste. The rules now
-  carry the page they came from, and a test reads that document rather than the database.
-- **Photos are cleaned before they are stored.** Phone photos contain the GPS location where
+- **The assistant never guesses.** It answers only from the city's own guide. If the guide
+  doesn't cover a question, it says so and points at the city's website. A wrong answer about
+  garbage is worse than no answer, because the resident acts on it.
+- **For photos, the AI only names the object. The city's guide decides the bin.** Blainville's
+  rules are not the general recycling rules an AI would otherwise answer from.
+- **The AI can't change anything by itself.** Staff see exactly what will change and approve
+  it first.
+- **The schedule is checked against the city's printed calendar, not against the database it
+  was generated from.** That check found two collection patterns labelled recycling where the
+  city prints household waste. Every other test had passed.
+- **Photos are cleaned before they are stored.** Phone photos carry the GPS location where
   they were taken, often the resident's own home. That location is removed.
 
 ## What it achieves
 
-- **Accurate answers.** In testing, the assistant answered all 19 questions the city's guide
-  covers correctly, and declined all 6 questions it doesn't cover instead of guessing. The
-  harder questions were added deliberately, and they found a real bug: a question about
-  chicken bones worked in English and failed in French. Nobody would have noticed it by
-  testing in one language.
-- **No double changes.** In an early test, two staff members approved the same change at
-  the same moment, and it was applied twice. That is fixed: each approved change is applied
-  exactly once.
-- **Keeps working when something breaks.** If one of the services behind the site goes down,
-  pages still load normally instead of freezing.
-- **Handles busy moments.** With 200 simulated residents using the site at the same time,
-  every request succeeded.
-- **Thoroughly tested.** 248 automated tests check that it behaves correctly, many of them
-  against the same kind of setup it runs on in real life.
+- **Accurate answers.** The assistant answered all 19 questions the city's guide covers and
+  declined all 6 it doesn't. One of those questions found a real bug: chicken bones worked in
+  English and failed in French.
+- **No double changes.** Each approved change is applied exactly once, including when two
+  staff members approve the same one at the same moment.
+- **Keeps working when something breaks.** If a service behind the site goes down, pages
+  still load instead of freezing.
+- **Handles busy moments.** 200 residents using the site at once, every request succeeded.
+- **Thoroughly tested.** 248 automated tests, many of them against the same kind of setup
+  the site runs on in real life.
 
 ## About this project
 
